@@ -1,0 +1,210 @@
+/* Add your own custom css to this file. You may wish to use css !important calls to override css from the template css files.
+----------------------------------------------------------- */.s5_logo {  float: left;  height: 70px;  cursor: pointer;  margin-top: 0px;  margin-bottom: 0px;  margin-left: 0px;  width: 100%;}
+
+
+#s5_menu_wrap, #s5_login, #subMenusContainer div.s5_sub_wrap ul, #subMenusContainer div.s5_sub_wrap_rtl ul, #s5_register, #s5_bottom_row3_area1, .s5_ts_not_active, #subMenusContainer div.s5_sub_wrap_lower ul, #subMenusContainer div.s5_sub_wrap_lower_rtl ul {  text-shadow: -1px -1px 0px rgba(0, 0, 0, 0.3) !important;  border-top: 1px solid rgba(255, 255, 255, .3) !important;  -webkit-background-clip: padding-box;  background-clip: padding-box;  background: #505B40 !important;  background: -moz-linear-gradient(top, #505B40 0%, #333333 100%) !important;  background: -webkit-gradient(linear, left top, left bottom, color-stop(0%,#505B40), color-stop(100%,#333333)) !important;  background: -webkit-linear-gradient(top, #505B40 0%,#333333 100%) !important;  background: -o-linear-gradient(top, #4f4f4f 0%,#333333 100%) !important;  background: -ms-linear-gradient(top, #4f4f4f 0%,#333333 100%) !important;  background: linear-gradient(to bottom, #505B40 0%,#333333 100%) !important;  filter: progid:DXImageTransform.Microsoft.gradient( startColorstr='#4f4f4f', endColorstr='#333333',GradientType=0 ) !important;}
+
+
+
+
+.module_round_box {
+	text-shadow: none;
+	color: rgb(176, 176, 176);
+	padding: 10px;
+	margin-bottom: 15px;
+	background: rgb(16, 16, 16);
+	border: 1px solid rgb(94, 94, 94);
+	border-radius: 8px;
+}
+
+.module_round_box ul.menu li:hover a {
+	color: #000000 !important;
+	text-decoration: none !important;
+}
+
+.module_round_box a:link {
+  color: #ffffff !important;
+}
+
+.module_round_box a:visited {
+  color: #ffffff !important;
+}
+
+.module_round_box a:hover {
+  color: #ffffff !important;
+}
+
+.module_round_box ul.menu a {
+  color: #000000 !important;
+}
+
+.s5_mod_h3_outer h3 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap {
+	border: 1px solid rgb(94, 94, 94);
+	background: rgb(16, 16, 17);
+	margin-bottom: 35px;
+	border-radius: 8px;
+	color: rgb(176, 176, 176);
+}
+
+#s5_component_wrap_inner h1 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap_inner h2 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap_inner {
+	color: rgb(176, 176, 176);
+}
+
+.module_round_box ul.menu a {
+  color: #000000 !important;
+}
+
+.s5_mod_h3_outer h3 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap {
+	border: 1px solid rgb(94, 94, 94);
+	background: rgb(16, 16, 17);
+	margin-bottom: 35px;
+	border-radius: 8px;
+	color: rgb(176, 176, 176);
+}
+
+#s5_component_wrap_inner h1 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap_inner h2 {
+	color: rgb(255, 255, 255);
+}
+
+#s5_component_wrap_inner {
+	color: rgb(176, 176, 176);
+}
+
+#s5_component_wrap_inner a {
+	color: rgb(240, 150, 50);
+}
+
+#s5_component_wrap_inner a:link {
+	color: rgb(240, 150, 50);
+	background: rgb(16, 16, 16);
+}
+
+#s5_component_wrap_inner a:visited {
+	color: rgb(240, 150, 50);
+}
+
+#s5_component_wrap_inner a:hover {
+	color: rgb(240, 240, 240);
+}
+
+.video-responsive{    overflow:hidden;    padding-bottom:56.25%;    position:relative;    height:0;}
+
+
+.video-responsive iframe{    left:0;    top:0;    height:100%;    width:100%;    position:absolute;}
+
+#s5_header_area1 {
+	padding-top: 15px;
+}
+
+#s5_menu_wrap {
+	margin-left: 0px;
+	margin-right: 0px;
+}
+
+#s5_bodywrap_opacity_padding {
+	margin-left: 15px;
+	margin-right: 15px;
+}
+
+.s5_outer select {
+	color: rgb(0, 0, 0);
+}
+
+.s5_outer input {
+	color: rgb(0, 0, 0);
+}
+
+.custom_img {
+	height: auto;
+	width: 50%;
+	padding: 4px;
+	float: right;
+}
+
+.custom_img_full {
+	height: auto;
+	width: 100%;
+	padding-top: 4px;
+	padding-bottom: 4px;
+}
+
+.custom_img_left {
+	height: auto;
+	width: 50%;
+	padding: 4px;
+	float: left;
+}
+
+.custom_img_thumb {
+	height: auto;
+	width: 96px;
+	padding: 4px;
+}
+
+div.c_img {
+    margin: 5px;
+    padding: 5px;
+/*    border: 1px solid #ffffff; */
+    height: auto;
+    width: auto;
+    float: left;
+    text-align: center;
+}
+
+div.c_img img {
+    display: inline;
+    margin: 5px;
+    border: 1px solid #7f7f7f;
+}
+
+div.c_img a:hover img {
+    border:1px solid #ffffff;
+}
+
+div.c_desc {
+    text-align: center;
+    font-weight: normal;
+    margin: 5px;
+}
+
+.custom1_img {
+	height: auto;
+	width: 80%;
+}
+
+.custom2_img {
+	height: auto;
+	width: 50%;
+}
+
+th {
+	color: rgb(255, 255, 255);
+}
+
+#s5_nav li {
+	margin-right: 0px;
+}
+
+#s5_menu_wrap {
+	padding-left: 0px;
+}
