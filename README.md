@@ -43,8 +43,8 @@ Supports all Aces High arenas:
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/yourusername/ahstats.git
-   cd ahstats
+   git clone https://github.com/steelington/AHStats.git
+   cd AHStats
    ```
 
 2. **Install dependencies:**
@@ -258,8 +258,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## 📞 Support
 
-- **Bug Reports**: [Open an issue](https://github.com/yourusername/ahstats/issues)
-- **Feature Requests**: [Open an issue](https://github.com/yourusername/ahstats/issues) with "enhancement" label
+- **Bug Reports**: [Open an issue](https://github.com/steelington/AHStats/issues)
+- **Feature Requests**: [Open an issue](https://github.com/steelington/AHStats/issues) with "enhancement" label
 - **Questions**: Check [CLAUDE.md](CLAUDE.md) for architecture details
 
 ## 🚧 Known Limitations
