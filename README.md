@@ -77,12 +77,21 @@ The exe lands in `dist/AHStats.exe`. It stores its database, cache, and log in `
 
 ### Syncing Pilot Stats
 
+**Full History** (get everything you've ever flown):
+
 1. Enter your pilot ID in the "Pilot/Squad ID" field
 2. Select your arena (or "All" for all arenas)
-3. Click **"Sync Full History"**
+3. Sync Mode is "Full History" by default - click **"Sync Full History"**
 4. Wait for the sync to complete (3+ seconds per tour due to rate limiting)
 
 > **Note**: First sync for a pilot with 100+ tours may take 5-10 minutes due to respectful rate limiting.
+
+**Single Tour** (just want the latest month, or one specific tour):
+
+1. Enter your pilot ID and select your arena as above
+2. Switch Sync Mode to **"Single Tour"**
+3. Click **"Fetch Tours"** to load the tour list into the dropdown (only needed once - after that the list is cached)
+4. Pick a tour from the dropdown and click **"Sync This Tour"**
 
 ### Viewing Statistics
 

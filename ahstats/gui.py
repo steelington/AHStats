@@ -113,6 +113,10 @@ class App(ctk.CTk):
         self.single_tour_dropdown = ctk.CTkOptionMenu(
             sync_mode_row, variable=self.single_tour_var, values=[""], width=200
         )
+        self.fetch_tours_btn = ctk.CTkButton(
+            sync_mode_row, text="Fetch Tours", command=self.on_fetch_tours_clicked,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, width=100
+        )
 
         row2 = ctk.CTkFrame(self)
         row2.pack(fill="x", padx=20, pady=(0, 10))
@@ -157,61 +161,46 @@ class App(ctk.CTk):
             # Show tour selector
             self.single_tour_label.pack(side="left", padx=(12, 4))
             self.single_tour_dropdown.pack(side="left", padx=4)
+            self.fetch_tours_btn.pack(side="left", padx=4)
             self.sync_btn.configure(text="Sync This Tour")
 
-            # Check if tours exist and populate dropdown
-            tours = list(self.db.get_tours())
-            if len(tours) == 0:
-                # No tours - need to fetch them
-                self.status_label.configure(text="Discovering tours...", text_color=theme.ACCENT_OLIVE)
-                self.sync_btn.configure(state="disabled")
-
-                def fetch_tours():
-                    try:
-                        sync.ensure_tour_list(self.client, self.db)
-                        # Refresh all dropdowns on the main thread
-                        self.after(0, self.refresh_tour_dropdown)
-                        self.after(0, lambda: self.status_label.configure(
-                            text="✓ Tours loaded - select one and click 'Sync This Tour'",
-                            text_color=theme.ACCENT_OLIVE
-                        ))
-                        self.after(0, lambda: self.sync_btn.configure(state="normal"))
-                    except Exception as e:
-                        self.after(0, lambda: self.status_label.configure(
-                            text=f"Error loading tours: {e}",
-                            text_color="#ff0000"
-                        ))
-                        self.after(0, lambda: self.sync_btn.configure(state="normal"))
-
-                threading.Thread(target=fetch_tours, daemon=True).start()
+            if self._tour_label_to_id:
+                self.status_label.configure(
+                    text=f"{len(self._tour_label_to_id)} tours available - select one and click 'Sync This Tour'",
+                    text_color=theme.ACCENT_OLIVE
+                )
             else:
-                # Tours already exist - populate dropdown immediately
-                arena = self._selected_arena()
-                filtered_tours = [t for t in tours if arena is None or t.get("arena") == arena]
-                filtered_tours.sort(key=lambda t: t.get("start_date", ""), reverse=True)
-
-                labels = [t["label"] for t in filtered_tours]
-                self.single_tour_dropdown.configure(values=labels or [""])
-                if labels:
-                    self.single_tour_var.set(labels[0])
-                    self.status_label.configure(
-                        text=f"✓ {len(labels)} tours available - select one and click 'Sync This Tour'",
-                        text_color=theme.ACCENT_OLIVE
-                    )
-                else:
-                    self.status_label.configure(
-                        text="⚠️ No tours for this arena - try selecting 'All' or different arena",
-                        text_color="#ff9900"
-                    )
+                self.status_label.configure(
+                    text="Click 'Fetch Tours' to load the tour list, then pick one",
+                    text_color="#ff9900"
+                )
         else:
             # Hide tour selector
             self.single_tour_label.pack_forget()
             self.single_tour_dropdown.pack_forget()
+            self.fetch_tours_btn.pack_forget()
             self.sync_btn.configure(text="Sync Full History")
             self.status_label.configure(
                 text="Enter Pilot ID above, then click 'Sync Full History'",
                 text_color="#999"
             )
+
+    def on_fetch_tours_clicked(self):
+        """Populate the tour list (and _tour_label_to_id) for Single Tour
+        mode. Cheap no-op if tours are already cached - just re-reads
+        from the DB, so safe to click any time the dropdown looks empty
+        or stale (e.g. after switching arenas)."""
+        self.fetch_tours_btn.configure(state="disabled")
+        self.status_label.configure(text="Discovering tours...", text_color=theme.ACCENT_OLIVE)
+
+        def worker():
+            try:
+                sync.ensure_tour_list(self.client, self.db)
+                self.progress_queue.put(("TOURS_FETCHED",))
+            except Exception as e:
+                self.progress_queue.put(("TOURS_FETCH_ERROR", str(e)))
+
+        threading.Thread(target=worker, daemon=True).start()
 
     # ---------------- tabs ----------------
 
@@ -561,6 +550,20 @@ class App(ctk.CTk):
                 elif tag == "TOUR_FETCH_ERROR":
                     self.fetch_tour_btn.configure(state="normal")
                     self.tour_status_label.configure(text=f"Error: {item[1]}")
+                elif tag == "TOURS_FETCHED":
+                    self.fetch_tours_btn.configure(state="normal")
+                    self.refresh_tour_dropdown()
+                    count = len(self._tour_label_to_id)
+                    if count:
+                        self.status_label.configure(
+                            text=f"{count} tours available - select one and click 'Sync This Tour'",
+                            text_color=theme.ACCENT_OLIVE
+                        )
+                    else:
+                        self.status_label.configure(text="No tours found.", text_color="#ff9900")
+                elif tag == "TOURS_FETCH_ERROR":
+                    self.fetch_tours_btn.configure(state="normal")
+                    self.status_label.configure(text=f"Error loading tours: {item[1]}", text_color="#ff0000")
         except queue.Empty:
             pass
         self.after(150, self._poll_queue)
