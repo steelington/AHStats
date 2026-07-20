@@ -96,10 +96,10 @@ class AhScoreClient:
         self._session.headers.update(DEFAULT_HEADERS)
         try:
             self._session.verify = _build_ca_bundle()
-        except requests.RequestException:
+        except Exception as e:
             # Fall back to default verification; individual requests will
             # raise a clear SSL error instead of failing silently insecure.
-            pass
+            logger.error(f"Failed to build patched CA bundle, falling back to default verification: {type(e).__name__}: {e}")
         self._lock = threading.Lock()
         self._last_request_time = 0.0
 
