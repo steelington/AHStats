@@ -97,7 +97,7 @@ The exe lands in `dist/AHStats.exe`. It stores its database, cache, and log in `
 
 - **Career Summary** - Aggregated totals across all synced tours
 - **Tour Detail** - Select a tour from dropdown for detailed breakdown
-- **Kills by Plane** - Career-wide aircraft kill matrix
+- **Kills by Plane** - Aircraft kill matrix (kills in/of, killed by, died in). Use the **Scope** toggle to switch between **Career** (all synced tours) and **Selected Tour** (follows whichever tour is picked on the Tour Detail tab)
 - **Squad** - Look up squad rosters for a specific tour
 - **Arena Planes** - View arena-wide aircraft leaderboards
 

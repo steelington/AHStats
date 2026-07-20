@@ -287,17 +287,26 @@ class App(ctk.CTk):
         self.tour_tree.pack(fill="both", expand=True, padx=10, pady=10)
 
     def _build_planes_tab(self, frame):
+        top = ctk.CTkFrame(frame)
+        top.pack(fill="x", padx=10, pady=(10, 0))
+        ctk.CTkLabel(top, text="Scope:").pack(side="left", padx=(0, 4))
+        self.planes_scope_var = ctk.StringVar(value="Career")
+        ctk.CTkSegmentedButton(
+            top, values=["Career", "Selected Tour"],
+            variable=self.planes_scope_var, command=self.on_planes_scope_changed
+        ).pack(side="left", padx=4)
+        ctk.CTkButton(
+            top, text="Refresh from Cache", command=self.refresh_planes,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+        ).pack(side="left", padx=8)
+
         self.planes_status_label = ctk.CTkLabel(frame, text="", font=ctk.CTkFont(size=11))
-        self.planes_status_label.pack(anchor="w", padx=10, pady=(10, 0))
+        self.planes_status_label.pack(anchor="w", padx=10, pady=(6, 0))
 
         self.planes_tree = self._make_tree(
             frame, ["Plane", "Kills In", "Kills Of", "Killed By", "Died In"], height=20
         )
         self.planes_tree.pack(fill="both", expand=True, padx=10, pady=10)
-        ctk.CTkButton(
-            frame, text="Refresh from Cache", command=self.refresh_planes,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
-        ).pack(padx=10, pady=6)
 
     def _build_squad_tab(self, frame):
         top = ctk.CTkFrame(frame)
@@ -691,6 +700,9 @@ class App(ctk.CTk):
                 row["category"], row["kills"], row["assists"], row["sorties"],
                 row["landed"], row["deaths"], _fmt_hms(row["time_seconds"]), row["rank"],
             ))
+        # Keep Kills by Plane in sync if it's following the selected tour.
+        if self.planes_scope_var.get() == "Selected Tour":
+            self.refresh_planes()
 
     def on_fetch_single_tour(self):
         gameid = self.gameid_entry.get().strip()
@@ -744,12 +756,31 @@ class App(ctk.CTk):
 
     # ---------------- kills by plane ----------------
 
+    def on_planes_scope_changed(self, _value=None):
+        self.refresh_planes()
+
     def refresh_planes(self):
         gameid = self.gameid_entry.get().strip()
         stype = self.stype_var.get()
         self.planes_tree.delete(*self.planes_tree.get_children())
         if not gameid:
             self.planes_status_label.configure(text="")
+            return
+
+        if self.planes_scope_var.get() == "Selected Tour":
+            label = self.tour_var.get()
+            tourid = self._tour_label_to_id.get(label)
+            if not tourid:
+                self.planes_status_label.configure(text="No tour selected - pick one on the Tour Detail tab first.")
+                return
+            if not self.db.has_pilot_tour(gameid, stype, tourid):
+                self.planes_status_label.configure(text=f"{label} isn't fetched yet - use 'Fetch This Tour' on the Tour Detail tab.")
+                return
+            self.planes_status_label.configure(text=f"Showing {label} only")
+            for row in self.db.get_pilot_plane_matrix(gameid, tourid):
+                self.planes_tree.insert("", "end", values=(
+                    row["plane"], row["kills_in"], row["kills_of"], row["killed_by"], row["died_in"],
+                ))
             return
 
         # Show how many tours are being aggregated
