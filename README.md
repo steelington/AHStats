@@ -34,12 +34,19 @@ Supports all Aces High arenas:
 
 ## 🚀 Installation
 
-### Requirements
+### Option A: Download the exe (easiest)
 
+Grab the latest `AHStats.exe` from the [Releases](https://github.com/steelington/AHStats/releases) page and run it - no Python required.
+
+> **Antivirus note**: Some antivirus/Windows Defender may flag `AHStats.exe` as a false positive on first run. This is a well-known side effect of how PyInstaller packages Python apps into a single exe (the self-extracting bootloader pattern looks similar to how some malware droppers behave to heuristic scanners) - it's not unique to this app. If it gets flagged or quarantined, restore it from quarantine / add an allow-list entry. The source is right here in this repo if you'd rather verify and build it yourself (see Option B).
+
+### Option B: Run from source
+
+**Requirements:**
 - **Python 3.10 or higher**
 - Internet connection (for fetching stats from hitechcreations.com)
 
-### Setup
+**Setup:**
 
 1. **Clone the repository:**
    ```bash
@@ -56,6 +63,15 @@ Supports all Aces High arenas:
    ```bash
    python app.py
    ```
+
+### Building the exe yourself
+
+```bash
+pip install pyinstaller
+pyinstaller AHStats.spec --clean
+```
+
+The exe lands in `dist/AHStats.exe`. It stores its database, cache, and log in `%LOCALAPPDATA%\AHStats\` (running from source instead uses the project folder).
 
 ## 📖 Usage
 

@@ -12,8 +12,9 @@ import threading
 from pathlib import Path
 
 from ahstats.parser import PilotPlaneKills, PilotTourScores, PlaneLeaderboard, PlayerPlaneStats, SquadStats
+from ahstats.paths import get_app_data_dir
 
-DEFAULT_DB_PATH = Path(__file__).parent.parent / "ahstats.db"
+DEFAULT_DB_PATH = get_app_data_dir() / "ahstats.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS tours (

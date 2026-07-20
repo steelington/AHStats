@@ -485,17 +485,17 @@ class App(ctk.CTk):
         if not incomplete:
             return
 
-        sync = incomplete[0]  # Most recent
-        arena_label = sync["arena"] if sync["arena"] else "all arenas"
+        incomplete_sync = incomplete[0]  # Most recent
+        arena_label = incomplete_sync["arena"] if incomplete_sync["arena"] else "all arenas"
         response = messagebox.askyesno(
             "Resume Interrupted Sync?",
-            f"Found incomplete sync from {sync['started_at'][:10]} for {arena_label}.\n"
-            f"Progress: {sync['tours_processed']}/{sync['total_tours']} tours.\n\n"
+            f"Found incomplete sync from {incomplete_sync['started_at'][:10]} for {arena_label}.\n"
+            f"Progress: {incomplete_sync['tours_processed']}/{incomplete_sync['total_tours']} tours.\n\n"
             f"Resume where you left off?"
         )
 
         if response:
-            self._resume_sync(sync["sync_id"])
+            self._resume_sync(incomplete_sync["sync_id"])
 
     def _resume_sync(self, sync_id: str):
         """Resume a paused sync."""

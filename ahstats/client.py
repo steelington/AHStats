@@ -35,10 +35,11 @@ import threading
 import time
 
 logger = logging.getLogger('ahstats.client')
-from pathlib import Path
 
 import certifi
 import requests
+
+from ahstats.paths import get_app_data_dir
 
 AHSCORE_URL = "https://www.hitechcreations.com/component/ahscore/index.php"
 SQUADSTATS_URL = "https://bbs.hitechcreations.com/scores/squadstats.php"
@@ -49,7 +50,7 @@ PLAYERS_URL = "https://bbs.hitechcreations.com/scores/players.php"
 # Missing from the server's handshake; fetched once and cached alongside
 # certifi's root bundle so verification succeeds without disabling it.
 SECTIGO_INTERMEDIATE_URL = "http://crt.sectigo.com/SectigoPublicServerAuthenticationCADVR36.crt"
-_CACHE_DIR = Path(__file__).parent / "_cache"
+_CACHE_DIR = get_app_data_dir() / "_cache"
 _BUNDLE_PATH = _CACHE_DIR / "ca_bundle.pem"
 
 DEFAULT_HEADERS = {

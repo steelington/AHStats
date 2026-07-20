@@ -113,6 +113,8 @@ def parse_tour_list(soup: BeautifulSoup) -> list:
 
 
 def parse_pilot_tour_scores(html: str) -> PilotTourScores | None:
+    if not html:
+        return None
     soup = BeautifulSoup(html, "lxml")
 
     header = soup.find("h2", string=re.compile(r"^Scores for .+ in .+|^Player .+ did not fly"))
@@ -207,6 +209,8 @@ class SquadStats:
 
 
 def parse_squad_stats(html: str) -> SquadStats | None:
+    if not html:
+        return None
     soup = BeautifulSoup(html, "lxml")
     tables = soup.find_all("table", class_="user1_inner")
 
@@ -314,6 +318,8 @@ _PINDEX_RE = re.compile(r"pindex=(\d+)")
 
 
 def parse_plane_leaderboard(html: str) -> PlaneLeaderboard | None:
+    if not html:
+        return None
     soup = BeautifulSoup(html, "lxml")
     table = None
     for t in soup.find_all("table", class_="user1_inner"):
@@ -380,6 +386,8 @@ class PilotPlaneKills:
 
 
 def parse_pilot_plane_kills(html: str) -> PilotPlaneKills | None:
+    if not html:
+        return None
     soup = BeautifulSoup(html, "lxml")
     table = soup.find("table", class_="user1_inner")
     if table is None:
@@ -444,6 +452,8 @@ class PlayerPlaneStats:
 
 
 def parse_player_plane_stats(html: str) -> PlayerPlaneStats | None:
+    if not html:
+        return None
     soup = BeautifulSoup(html, "lxml")
     tables = soup.find_all("table", class_="user1_inner")
 

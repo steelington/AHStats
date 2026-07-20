@@ -139,10 +139,10 @@ def sync_pilot(
         logger.info(f"Starting new sync {sync_id}, {len(to_fetch)} tours to fetch")
 
     fetched = 0
+    stopped_early = False
     for i, tour in enumerate(to_fetch):
         if stop_event.is_set():
-            db.finish_sync(sync_id, status='paused')
-            logger.info(f"Sync {sync_id} paused by user at {i}/{len(to_fetch)} tours")
+            stopped_early = True
             break
 
         tourid = tour["tourid"]
@@ -150,7 +150,7 @@ def sync_pilot(
             progress_cb(SyncProgress(i + 1, len(to_fetch), f"Fetching {tour['label']}..."))
 
         if stop_event.is_set():
-            db.finish_sync(sync_id, status='paused')
+            stopped_early = True
             break
 
         # Wrap fetch in try/except for error logging
@@ -166,11 +166,16 @@ def sync_pilot(
                         type(e).__name__, str(e), traceback.format_exc())
             # Continue with next tour instead of stopping entire sync
 
-    db.finish_sync(sync_id, status='completed')
+    if stopped_early:
+        db.finish_sync(sync_id, status='paused')
+        logger.info(f"Sync {sync_id} paused by user at {fetched}/{len(to_fetch)} tours")
+    else:
+        db.finish_sync(sync_id, status='completed')
+        logger.info(f"Sync {sync_id} completed: {fetched}/{len(to_fetch)} tours had activity")
+
     if progress_cb:
         progress_cb(SyncProgress(len(to_fetch), len(to_fetch), f"Done - fetched {fetched} tour(s)."))
 
-    logger.info(f"Sync {sync_id} completed: {fetched}/{len(to_fetch)} tours had activity")
     return fetched
 
 

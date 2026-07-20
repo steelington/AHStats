@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 
 from ahstats.db import StatsDB
+from ahstats.paths import resource_path
+
+CHART_JS_PATH = resource_path("assets", "chart.js")
 
 
 def _seconds_to_hms(total: int | None) -> str:
@@ -98,7 +101,7 @@ def export_html_report(db: StatsDB, gameid: str, stype: str, path: str | Path) -
     """Self-contained HTML report: career summary + kills-by-plane, and a
     tour picker that switches between cached tours client-side (no
     network calls, no external assets - everything is embedded)."""
-    tours = {t["tourid"]: t for t in db.get_tours()}
+    tours = {t["tourid"]: dict(t) for t in db.get_tours()}
     tourids = sorted(
         db.get_pilot_tourids(gameid, stype),
         key=lambda tid: (tours[tid]["start_date"] if tid in tours else ""),
@@ -134,7 +137,7 @@ def export_html_report(db: StatsDB, gameid: str, stype: str, path: str | Path) -
 <head>
 <meta charset="utf-8">
 <title>Aces High Stats - {gameid}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+<script>{chartjs}</script>
 <style>
   body {{ font-family: Segoe UI, Arial, sans-serif; background: #0f1419; color: #d8dee9; margin: 0; padding: 24px; }}
   h1 {{ margin-top: 0; color: #eceff4; }}
@@ -348,6 +351,6 @@ if (typeof Chart !== 'undefined') {{
 </script>
 </body>
 </html>
-""".format(gameid=safe_gameid, data_json=data_json)
+""".format(gameid=safe_gameid, data_json=data_json, chartjs=CHART_JS_PATH.read_text(encoding="utf-8"))
 
     Path(path).write_text(page, encoding="utf-8")

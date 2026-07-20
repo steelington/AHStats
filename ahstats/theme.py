@@ -4,8 +4,9 @@ a companion to the game's website rather than a generic dark-mode tool.
 """
 from __future__ import annotations
 
-from pathlib import Path
 from tkinter import ttk
+
+from ahstats.paths import resource_path
 
 # Darker, richer color palette for distinctive look
 BG_DARK = "#0f1419"           # Darker background
@@ -28,9 +29,9 @@ ACCENT_RED = "#ef4444"        # Danger/stop actions
 ACCENT_AMBER = ACCENT_GREEN
 ACCENT_AMBER_HOVER = ACCENT_GREEN_HOVER
 
-THEME_JSON_PATH = Path(__file__).parent / "assets" / "htc_theme.json"
-APP_ICON_ICO_PATH = Path(__file__).parent / "assets" / "app_icon.ico"
-APP_ICON_PNG_PATH = Path(__file__).parent / "assets" / "app_icon.png"
+THEME_JSON_PATH = resource_path("assets", "htc_theme.json")
+APP_ICON_ICO_PATH = resource_path("assets", "app_icon.ico")
+APP_ICON_PNG_PATH = resource_path("assets", "app_icon.png")
 
 
 def style_treeview() -> None:
