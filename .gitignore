@@ -67,6 +67,16 @@ desktop.ini
 legacy_extracted/
 AHPilotStatsSetup.zip
 
+# Spatula's original AHPilotStats - kept locally for reference only.
+# His ReleaseNotes.txt states redistribution is NOT permitted, so the
+# compiled app and its installer must stay out of the repo. Anyone who
+# wants a copy gets it from http://www.my2cents.co.nz/AKUAG/Resources.aspx
+spatula/
+AHPilotStatsSetup/
+
+# Crash dumps
+*.dump
+
 # Temporary files
 nul
 *.tmp
