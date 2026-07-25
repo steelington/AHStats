@@ -112,15 +112,31 @@ def parse_tour_list(soup: BeautifulSoup) -> list:
     return tours
 
 
+def _find_scores_header(soup) -> str | None:
+    """The <h2> naming the pilot and tour, as normalised text.
+
+    Worth doing by hand: the two variants of this page aren't marked up
+    the same way. The scores page is plain text ("Scores for Steely in
+    Melee Tour 313"), but the no-activity page bolds the name
+    ("Player <b>Steely</b> did not fly in ..."). That means .string is
+    None there, so a find(string=...) match silently misses it, and
+    get_text(strip=True) would run the tags together into
+    "PlayerSteelydid not fly". Joining on a space fixes both."""
+    for h2 in soup.find_all("h2"):
+        text = re.sub(r"\s+", " ", h2.get_text(" ", strip=True)).strip()
+        if re.match(r"^Scores for .+ in .+", text) or re.match(r"^Player .+ did not fly", text):
+            return text
+    return None
+
+
 def parse_pilot_tour_scores(html: str) -> PilotTourScores | None:
     if not html:
         return None
     soup = BeautifulSoup(html, "lxml")
 
-    header = soup.find("h2", string=re.compile(r"^Scores for .+ in .+|^Player .+ did not fly"))
-    if header is None:
+    header_text = _find_scores_header(soup)
+    if header_text is None:
         return None
-    header_text = header.get_text(strip=True)
     m = re.match(r"^Scores for (.+) in (.+)$", header_text)
     if m:
         pilot_name, tour_label = m.group(1), m.group(2)

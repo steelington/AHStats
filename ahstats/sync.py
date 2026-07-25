@@ -6,6 +6,7 @@ from __future__ import annotations
 import datetime
 import logging
 import threading
+import traceback
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -23,6 +24,16 @@ from ahstats.parser import (
     parse_squad_stats,
     parse_tour_list,
 )
+
+
+class TourParseError(RuntimeError):
+    """The server answered but the page wasn't a recognisable scores page.
+
+    Distinct from "the pilot didn't fly that tour", which is a valid
+    answer we cache. This means something is actually wrong - a changed
+    page layout, a throttled request, an error page - so it's raised
+    rather than swallowed, to be logged and surfaced instead of being
+    reported to the user as a successful sync."""
 
 
 @dataclass
@@ -80,7 +91,11 @@ def fetch_single_tour(
     parsed = parse_pilot_tour_scores(html)
     if parsed is None:
         logger.warning(f"Failed to parse tour scores for {tourid} (unexpected page format)")
-        return False  # unexpected page - don't cache, allow retry later
+        raise TourParseError(
+            f"Unexpected page format for {tourid} - the page didn't contain a "
+            f"recognisable scores header. HiTech may have changed the page layout, "
+            f"or the request may have been throttled."
+        )
     db.save_pilot_tour_scores(gameid, stype, tourid, parsed)
     if not parsed.totals:
         return False  # valid "did not fly" - cached, but nothing to show
@@ -100,6 +115,47 @@ def fetch_single_tour(
         if pp_parsed and pp_parsed.planes:
             db.save_player_plane_stats(gameid, tourid, pp_parsed)
     return True
+
+
+def backfill_plane_matrix(
+    client: AhScoreClient,
+    db: StatsDB,
+    gameid: str,
+    tourids: list[str],
+    progress_cb: ProgressCallback = None,
+    stop_event: threading.Event | None = None,
+) -> int:
+    """Fetch the per-plane matrix for tours that have scores cached but no
+    matrix rows. A normal re-sync skips these - has_pilot_tour() sees the
+    scores and moves on - so they need fetching explicitly. Returns the
+    number of tours filled in.
+
+    Same 3-second rate limit as everything else, via the shared client, so
+    a full backfill of a long career takes a while by design."""
+    filled = 0
+    total = len(tourids)
+    for index, tourid in enumerate(tourids, start=1):
+        if stop_event and stop_event.is_set():
+            logger.info("Plane matrix backfill stopped by user after %d tour(s)", filled)
+            break
+        if progress_cb:
+            progress_cb(SyncProgress(index, total, f"Backfilling plane data: {tourid} ({index}/{total})"))
+        try:
+            html = client.fetch_player_plane_stats(gameid, tourid)
+            parsed = parse_player_plane_stats(html)
+        except Exception as e:
+            logger.error("Plane matrix backfill failed for %s: %s", tourid, e)
+            db.log_error(
+                None, gameid, "pilot", tourid, "plane_matrix",
+                type(e).__name__, str(e), traceback.format_exc(),
+            )
+            continue
+        if parsed and parsed.planes:
+            db.save_player_plane_stats(gameid, tourid, parsed)
+            filled += 1
+    if progress_cb:
+        progress_cb(SyncProgress(total, total, f"Backfill complete - filled {filled} tour(s)"))
+    return filled
 
 
 def sync_pilot(

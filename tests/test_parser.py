@@ -181,3 +181,53 @@ class TestParserEdgeCases(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestDidNotFlyPage(unittest.TestCase):
+    """The "did not fly" variant of the scores page.
+
+    HiTech bolds the pilot name on this page ("Player <b>Steely</b> did
+    not fly in ...") but not on the scores page. That broke header
+    detection: .string is None when the tag has children, so a
+    find(string=...) match missed it and every no-activity tour failed to
+    parse, went uncached, and was re-fetched on every sync.
+    """
+
+    def setUp(self):
+        fixture_path = FIXTURES_DIR / "sample_ahscore_did_not_fly.html"
+        if not fixture_path.exists():
+            self.html = None
+            return
+        with open(fixture_path, encoding="utf-8") as f:
+            self.html = f.read()
+
+    def test_did_not_fly_page_parses(self):
+        """A no-activity page is a valid response, not a parse failure."""
+        if not self.html:
+            self.skipTest("Fixture file not found")
+
+        result = parse_pilot_tour_scores(self.html)
+        self.assertIsNotNone(result, "'did not fly' page should parse, not return None")
+
+    def test_did_not_fly_extracts_pilot_and_tour(self):
+        """The bolded pilot name must not run into the following text."""
+        if not self.html:
+            self.skipTest("Fixture file not found")
+
+        result = parse_pilot_tour_scores(self.html)
+        self.assertEqual(result.pilot_name, "Steely")
+        self.assertEqual(result.tour_label, "Melee Tour 318")
+
+    def test_did_not_fly_has_no_totals(self):
+        """No activity means no stats - the caller caches a zeroed row."""
+        if not self.html:
+            self.skipTest("Fixture file not found")
+
+        result = parse_pilot_tour_scores(self.html)
+        self.assertEqual(result.totals, {})
+        self.assertEqual(result.scores, {})
+
+    def test_unrecognised_page_still_returns_none(self):
+        """A genuinely unexpected page must not be mistaken for no activity."""
+        result = parse_pilot_tour_scores("<html><body><h2>Site maintenance</h2></body></html>")
+        self.assertIsNone(result)
