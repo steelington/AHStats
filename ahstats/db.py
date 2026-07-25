@@ -186,6 +186,16 @@ CREATE INDEX IF NOT EXISTS idx_sync_progress_status
 
 CREATE INDEX IF NOT EXISTS idx_sync_errors_unresolved
     ON sync_errors(gameid, stype, is_resolved, occurred_at);
+
+-- Groups multiple game IDs one player has used (e.g. after a name
+-- change) into one combined career view, a la Spatula's original
+-- "define a squadron" feature.
+CREATE TABLE IF NOT EXISTS identity_groups (
+    group_name TEXT NOT NULL,
+    stype TEXT NOT NULL,
+    gameid TEXT NOT NULL,
+    PRIMARY KEY (group_name, stype, gameid)
+);
 """
 
 _ARENA_PREFIXES = [
@@ -209,8 +219,74 @@ def _arena_for_tourid(tourid: str) -> str:
     return "Unknown"
 
 
+def tour_number(tourid: str) -> int:
+    """The numeric part of a tourid ('LWTour228' -> 228). Grids sort on
+    this rather than the raw tourid so tours past 100 order correctly -
+    the same bug Spatula fixed in his 1.5.2 by splitting out a Tour
+    column from Tour Details."""
+    match = re.search(r"(\d+)$", tourid)
+    return int(match.group(1)) if match else 0
+
+
+# The per-category views (fighter/attack/bomber/vehicle) mirror the eight
+# Score/Stats grids in Spatula's app. 'total' is ours, not his.
+CATEGORY_LABELS = [
+    ("fighter", "Fighter"),
+    ("attack", "Attack"),
+    ("bomber", "Bomber"),
+    ("vehicle", "Vehicle/Boat"),
+]
+
+# Column order for the Score grids, per category. HTC only publishes the
+# kill-based metrics for fighters; bombers only get the damage-based ones.
+SCORE_METRICS = {
+    "fighter": [
+        "Kills per Death + 1", "Kills per Sortie", "Kills per Hour of Flight",
+        "Kills Hit Percentage", "Kill Points",
+    ],
+    "attack": [
+        "Kills per Death + 1", "Kills per Sortie", "Kills per Hour of Flight",
+        "Kills Hit Percentage", "Kill Points", "Damage per Death", "Damage per Sortie",
+        "Damage Hit Percentage", "Damage Points", "Field Captures",
+    ],
+    "bomber": [
+        "Damage per Death", "Damage per Sortie", "Damage Hit Percentage",
+        "Damage Points", "Field Captures",
+    ],
+    "vehicle": [
+        "Kills per Death + 1", "Kills per Sortie", "Kills per Hour of Flight",
+        "Kills Hit Percentage", "Kill Points", "Damage per Death", "Damage per Sortie",
+        "Damage Hit Percentage", "Damage Points", "Field Captures",
+    ],
+}
+
+# HTC's own metric names are far too long to use as grid headings - ten
+# of them side by side just truncate. These are the column captions.
+SCORE_HEADERS = {
+    "Kills per Death + 1": "K/Death+1",
+    "Kills per Sortie": "K/Sortie",
+    "Kills per Hour of Flight": "K/Hour",
+    "Kills Hit Percentage": "Kill Hit%",
+    "Kill Points": "Kill Pts",
+    "Damage per Death": "Dmg/Death",
+    "Damage per Sortie": "Dmg/Sortie",
+    "Damage Hit Percentage": "Dmg Hit%",
+    "Damage Points": "Dmg Pts",
+    "Field Captures": "Captures",
+}
+
+
 def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+
+def _in_clause(column: str, gameid) -> tuple[str, list]:
+    """Builds a "column=?" or "column IN (?,?,...)" fragment so query
+    methods can take either a single gameid or an identity group's list
+    of gameids (multiple names one player has used over time)."""
+    ids = [gameid] if isinstance(gameid, str) else list(gameid)
+    placeholders = ",".join(["?"] * len(ids))
+    return f"{column} IN ({placeholders})", ids
 
 
 def _synchronized(method):
@@ -289,10 +365,11 @@ class StatsDB:
 
     # -- pilot tour scores --------------------------------------------
 
-    def has_pilot_tour(self, gameid: str, stype: str, tourid: str) -> bool:
+    def has_pilot_tour(self, gameid, stype: str, tourid: str) -> bool:
+        clause, ids = _in_clause("gameid", gameid)
         row = self._conn.execute(
-            "SELECT 1 FROM pilot_totals WHERE gameid=? AND stype=? AND tourid=? LIMIT 1",
-            (gameid, stype, tourid),
+            f"SELECT 1 FROM pilot_totals WHERE {clause} AND stype=? AND tourid=? LIMIT 1",
+            (*ids, stype, tourid),
         ).fetchone()
         return row is not None
 
@@ -342,33 +419,39 @@ class StatsDB:
                 )
         self._conn.commit()
 
-    def get_pilot_totals(self, gameid: str, stype: str, tourid: str):
+    def get_pilot_totals(self, gameid, stype: str, tourid: str):
+        clause, ids = _in_clause("gameid", gameid)
         return self._conn.execute(
-            "SELECT * FROM pilot_totals WHERE gameid=? AND stype=? AND tourid=?", (gameid, stype, tourid)
+            f"SELECT * FROM pilot_totals WHERE {clause} AND stype=? AND tourid=?", (*ids, stype, tourid)
         ).fetchall()
 
-    def get_pilot_scores(self, gameid: str, stype: str, tourid: str):
+    def get_pilot_scores(self, gameid, stype: str, tourid: str):
+        clause, ids = _in_clause("gameid", gameid)
         return self._conn.execute(
-            "SELECT * FROM pilot_scores WHERE gameid=? AND stype=? AND tourid=?", (gameid, stype, tourid)
+            f"SELECT * FROM pilot_scores WHERE {clause} AND stype=? AND tourid=?", (*ids, stype, tourid)
         ).fetchall()
 
-    def get_pilot_tourids(self, gameid: str, stype: str, arena: str | None = None):
+    def get_pilot_tourids(self, gameid, stype: str, arena: str | None = None):
+        clause, ids = _in_clause("pt.gameid", gameid)
         if arena:
             rows = self._conn.execute(
-                "SELECT DISTINCT pt.tourid FROM pilot_totals pt JOIN tours t ON t.tourid = pt.tourid "
-                "WHERE pt.gameid=? AND pt.stype=? AND t.arena=?",
-                (gameid, stype, arena),
+                f"SELECT DISTINCT pt.tourid FROM pilot_totals pt JOIN tours t ON t.tourid = pt.tourid "
+                f"WHERE {clause} AND pt.stype=? AND t.arena=?",
+                (*ids, stype, arena),
             ).fetchall()
         else:
             rows = self._conn.execute(
-                "SELECT DISTINCT tourid FROM pilot_totals WHERE gameid=? AND stype=?", (gameid, stype)
+                f"SELECT DISTINCT pt.tourid FROM pilot_totals pt WHERE {clause} AND pt.stype=?", (*ids, stype)
             ).fetchall()
         return {r["tourid"] for r in rows}
 
-    def get_career_totals(self, gameid: str, stype: str, arena: str | None = None):
+    def get_career_totals(self, gameid, stype: str, arena: str | None = None):
         """Sum of the 'total' category across every cached tour - the
         all-time career numbers. Pass arena to scope to one arena type
-        (e.g. 'Melee (MA)') since most pilots only care about one."""
+        (e.g. 'Melee (MA)') since most pilots only care about one.
+        gameid may be a single id or a list (an identity group - summed
+        together, e.g. a pilot who changed their in-game name)."""
+        clause, ids = _in_clause("pt.gameid", gameid)
         query = (
             "SELECT COUNT(DISTINCT pt.tourid) as tours, SUM(pt.kills) as kills, SUM(pt.assists) as assists, "
             "SUM(pt.sorties) as sorties, SUM(pt.landed) as landed, SUM(pt.bailed) as bailed, "
@@ -376,13 +459,81 @@ class StatsDB:
             "SUM(pt.discos) as discos, SUM(pt.time_seconds) as time_seconds "
             "FROM pilot_totals pt "
         )
-        params = [gameid, stype]
+        params = list(ids) + [stype]
         if arena:
-            query += "JOIN tours t ON t.tourid = pt.tourid WHERE pt.gameid=? AND pt.stype=? AND pt.category='total' AND t.arena=?"
+            query += f"JOIN tours t ON t.tourid = pt.tourid WHERE {clause} AND pt.stype=? AND pt.category='total' AND t.arena=?"
             params.append(arena)
         else:
-            query += "WHERE pt.gameid=? AND pt.stype=? AND pt.category='total'"
+            query += f"WHERE {clause} AND pt.stype=? AND pt.category='total'"
         return self._conn.execute(query, params).fetchone()
+
+    def get_category_stats_series(self, gameid, stype: str, category: str, arena: str | None = None):
+        """One row per tour of the raw counting stats for a single
+        category - the time series behind Spatula's per-category Stats
+        grids. Where our Tour Detail tab shows every category for one
+        tour, this shows one category across every tour.
+
+        Rows from an identity group's several gameids are summed per
+        tour, so a pilot who renamed mid-tour still gets one row."""
+        clause, ids = _in_clause("pt.gameid", gameid)
+        query = (
+            "SELECT pt.tourid, t.label, t.start_date, t.end_date, t.arena, "
+            "SUM(pt.kills) as kills, SUM(pt.assists) as assists, SUM(pt.sorties) as sorties, "
+            "SUM(pt.landed) as landed, SUM(pt.bailed) as bailed, SUM(pt.ditched) as ditched, "
+            "SUM(pt.captured) as captured, SUM(pt.deaths) as deaths, SUM(pt.discos) as discos, "
+            "SUM(pt.time_seconds) as time_seconds, MIN(pt.rank) as rank "
+            "FROM pilot_totals pt JOIN tours t ON t.tourid = pt.tourid "
+            f"WHERE {clause} AND pt.stype=? AND pt.category=?"
+        )
+        params = list(ids) + [stype, category]
+        if arena:
+            query += " AND t.arena=?"
+            params.append(arena)
+        query += " GROUP BY pt.tourid ORDER BY t.start_date DESC"
+        return self._conn.execute(query, params).fetchall()
+
+    def get_category_scores_series(self, gameid, stype: str, category: str, arena: str | None = None):
+        """One row per tour of the HTC-computed score metrics for a
+        category. Returns (metrics, rows): metrics is the ordered list of
+        metric names actually present, and each row is a plain dict of
+        tour info plus one key per metric.
+
+        Scores are ratios, so unlike the counting stats they're averaged
+        rather than summed across an identity group's gameids. In
+        practice only one name is active in any given tour, so the
+        average is over a single value."""
+        clause, ids = _in_clause("ps.gameid", gameid)
+        query = (
+            "SELECT ps.tourid, t.label, t.start_date, t.arena, ps.metric, "
+            "AVG(ps.score) as score, MIN(ps.rank) as rank "
+            "FROM pilot_scores ps JOIN tours t ON t.tourid = ps.tourid "
+            f"WHERE {clause} AND ps.stype=? AND ps.category=?"
+        )
+        params = list(ids) + [stype, category]
+        if arena:
+            query += " AND t.arena=?"
+            params.append(arena)
+        query += " GROUP BY ps.tourid, ps.metric ORDER BY t.start_date DESC"
+
+        by_tour: dict[str, dict] = {}
+        seen_metrics = set()
+        for row in self._conn.execute(query, params):
+            tour = by_tour.setdefault(
+                row["tourid"],
+                {
+                    "tourid": row["tourid"], "label": row["label"],
+                    "start_date": row["start_date"], "arena": row["arena"],
+                },
+            )
+            tour[row["metric"]] = row["score"]
+            seen_metrics.add(row["metric"])
+
+        # Keep the documented column order, dropping metrics HTC didn't
+        # publish for this category, then append anything unexpected so a
+        # new metric shows up rather than being silently swallowed.
+        ordered = [m for m in SCORE_METRICS.get(category, []) if m in seen_metrics]
+        ordered += sorted(seen_metrics - set(ordered))
+        return ordered, list(by_tour.values())
 
     # -- pilot kills by plane ------------------------------------------
 
@@ -414,19 +565,21 @@ class StatsDB:
         )
         self._conn.commit()
 
-    def get_career_kills_by_plane(self, gameid: str, arena: str | None = None):
+    def get_career_kills_by_plane(self, gameid, arena: str | None = None):
         """Kills per plane type, summed across every cached tour."""
         if arena:
+            clause, ids = _in_clause("pk.gameid", gameid)
             return self._conn.execute(
-                "SELECT pk.plane, SUM(pk.total) as kills FROM pilot_plane_kills pk "
-                "JOIN tours t ON t.tourid = pk.tourid WHERE pk.gameid=? AND t.arena=? "
-                "GROUP BY pk.plane ORDER BY kills DESC",
-                (gameid, arena),
+                f"SELECT pk.plane, SUM(pk.total) as kills FROM pilot_plane_kills pk "
+                f"JOIN tours t ON t.tourid = pk.tourid WHERE {clause} AND t.arena=? "
+                f"GROUP BY pk.plane ORDER BY kills DESC",
+                (*ids, arena),
             ).fetchall()
+        clause, ids = _in_clause("gameid", gameid)
         return self._conn.execute(
-            "SELECT plane, SUM(total) as kills FROM pilot_plane_kills WHERE gameid=? "
-            "GROUP BY plane ORDER BY kills DESC",
-            (gameid,),
+            f"SELECT plane, SUM(total) as kills FROM pilot_plane_kills WHERE {clause} "
+            f"GROUP BY plane ORDER BY kills DESC",
+            ids,
         ).fetchall()
 
     # -- squad stats ----------------------------------------------------
@@ -527,28 +680,88 @@ class StatsDB:
         )
         self._conn.commit()
 
-    def get_pilot_plane_matrix(self, gameid: str, tourid: str):
+    def get_pilot_plane_matrix(self, gameid, tourid: str):
+        clause, ids = _in_clause("gameid", gameid)
         return self._conn.execute(
-            "SELECT * FROM pilot_plane_matrix WHERE gameid=? AND tourid=? ORDER BY kills_in DESC",
-            (gameid, tourid),
+            f"SELECT plane, SUM(kills_in) as kills_in, SUM(kills_of) as kills_of, "
+            f"SUM(killed_by) as killed_by, SUM(died_in) as died_in "
+            f"FROM pilot_plane_matrix WHERE {clause} AND tourid=? GROUP BY plane ORDER BY kills_in DESC",
+            (*ids, tourid),
         ).fetchall()
 
-    def get_career_plane_matrix(self, gameid: str, arena: str | None = None):
+    def get_matrix_planes(self, gameid, arena: str | None = None) -> list[str]:
+        """Every plane this pilot has matrix data for - the model picker
+        on the Obj v Obj view."""
+        clause, ids = _in_clause("m.gameid", gameid)
+        query = (
+            "SELECT DISTINCT m.plane FROM pilot_plane_matrix m "
+            "JOIN tours t ON t.tourid = m.tourid "
+            f"WHERE {clause}"
+        )
+        params = list(ids)
+        if arena:
+            query += " AND t.arena=?"
+            params.append(arena)
+        query += " ORDER BY m.plane"
+        return [r["plane"] for r in self._conn.execute(query, params)]
+
+    def get_plane_matrix_series(self, gameid, plane: str, arena: str | None = None):
+        """One row per tour for a single plane - Spatula's Obj v Obj
+        grouped by Model, where you pick an aircraft and watch how it did
+        across your whole career."""
+        clause, ids = _in_clause("m.gameid", gameid)
+        query = (
+            "SELECT m.tourid, t.label, t.arena, SUM(m.kills_in) as kills_in, "
+            "SUM(m.kills_of) as kills_of, SUM(m.killed_by) as killed_by, "
+            "SUM(m.died_in) as died_in "
+            "FROM pilot_plane_matrix m JOIN tours t ON t.tourid = m.tourid "
+            f"WHERE {clause} AND m.plane=?"
+        )
+        params = list(ids) + [plane]
+        if arena:
+            query += " AND t.arena=?"
+            params.append(arena)
+        query += " GROUP BY m.tourid ORDER BY t.start_date DESC"
+        return self._conn.execute(query, params).fetchall()
+
+    def get_tourids_missing_matrix(self, gameid, stype: str, arena: str | None = None) -> list[str]:
+        """Tours where the pilot flew but we never cached the per-plane
+        matrix. Bulk syncs run before that endpoint was added left this
+        gap, and has_pilot_tour() stops a re-sync from filling it - hence
+        the explicit backfill."""
+        clause, ids = _in_clause("pt.gameid", gameid)
+        query = (
+            "SELECT DISTINCT pt.tourid FROM pilot_totals pt "
+            "JOIN tours t ON t.tourid = pt.tourid "
+            f"WHERE {clause} AND pt.stype=? AND pt.category='total' AND pt.sorties > 0 "
+            "AND NOT EXISTS (SELECT 1 FROM pilot_plane_matrix m "
+            "                WHERE m.gameid = pt.gameid AND m.tourid = pt.tourid)"
+        )
+        params = list(ids) + [stype]
+        if arena:
+            query += " AND t.arena=?"
+            params.append(arena)
+        query += " ORDER BY t.start_date DESC"
+        return [r["tourid"] for r in self._conn.execute(query, params)]
+
+    def get_career_plane_matrix(self, gameid, arena: str | None = None):
         """Kills in/of, killed by, died in per plane type, summed across
         every cached tour - the career-wide plane-vs-plane breakdown."""
         if arena:
+            clause, ids = _in_clause("pm.gameid", gameid)
             return self._conn.execute(
-                "SELECT pm.plane, SUM(pm.kills_in) as kills_in, SUM(pm.kills_of) as kills_of, "
-                "SUM(pm.killed_by) as killed_by, SUM(pm.died_in) as died_in "
-                "FROM pilot_plane_matrix pm JOIN tours t ON t.tourid = pm.tourid "
-                "WHERE pm.gameid=? AND t.arena=? GROUP BY pm.plane ORDER BY kills_in DESC",
-                (gameid, arena),
+                f"SELECT pm.plane, SUM(pm.kills_in) as kills_in, SUM(pm.kills_of) as kills_of, "
+                f"SUM(pm.killed_by) as killed_by, SUM(pm.died_in) as died_in "
+                f"FROM pilot_plane_matrix pm JOIN tours t ON t.tourid = pm.tourid "
+                f"WHERE {clause} AND t.arena=? GROUP BY pm.plane ORDER BY kills_in DESC",
+                (*ids, arena),
             ).fetchall()
+        clause, ids = _in_clause("gameid", gameid)
         return self._conn.execute(
-            "SELECT plane, SUM(kills_in) as kills_in, SUM(kills_of) as kills_of, "
-            "SUM(killed_by) as killed_by, SUM(died_in) as died_in "
-            "FROM pilot_plane_matrix WHERE gameid=? GROUP BY plane ORDER BY kills_in DESC",
-            (gameid,),
+            f"SELECT plane, SUM(kills_in) as kills_in, SUM(kills_of) as kills_of, "
+            f"SUM(killed_by) as killed_by, SUM(died_in) as died_in "
+            f"FROM pilot_plane_matrix WHERE {clause} GROUP BY plane ORDER BY kills_in DESC",
+            ids,
         ).fetchall()
 
     # --- Sync progress tracking methods ---
@@ -622,3 +835,34 @@ class StatsDB:
             "ORDER BY occurred_at DESC",
             (gameid, stype, days)
         ).fetchall()
+
+    # --- Identity groups (combined career view across name changes) ---
+
+    def save_identity_group(self, group_name: str, stype: str, gameids: list[str]) -> None:
+        with self._conn:
+            self._conn.execute(
+                "DELETE FROM identity_groups WHERE group_name=? AND stype=?", (group_name, stype)
+            )
+            self._conn.executemany(
+                "INSERT INTO identity_groups (group_name, stype, gameid) VALUES (?,?,?)",
+                [(group_name, stype, g.strip()) for g in gameids if g.strip()],
+            )
+
+    def delete_identity_group(self, group_name: str, stype: str) -> None:
+        self._conn.execute(
+            "DELETE FROM identity_groups WHERE group_name=? AND stype=?", (group_name, stype)
+        )
+        self._conn.commit()
+
+    def get_identity_group_names(self, stype: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT DISTINCT group_name FROM identity_groups WHERE stype=? ORDER BY group_name", (stype,)
+        ).fetchall()
+        return [r["group_name"] for r in rows]
+
+    def get_identity_group_members(self, group_name: str, stype: str) -> list[str]:
+        rows = self._conn.execute(
+            "SELECT gameid FROM identity_groups WHERE group_name=? AND stype=? ORDER BY gameid",
+            (group_name, stype),
+        ).fetchall()
+        return [r["gameid"] for r in rows]

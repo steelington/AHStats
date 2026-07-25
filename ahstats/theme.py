@@ -72,3 +72,31 @@ def style_treeview() -> None:
         "Treeview.Heading",
         background=[("active", ACCENT_OLIVE_HOVER)],
     )
+
+    # Scrollbars are ttk too, so they need the same hand-styling or they
+    # come out in default light grey against the dark grids.
+    for orient in ("Vertical", "Horizontal"):
+        style.configure(
+            f"{orient}.TScrollbar",
+            background=BORDER_GRAY,
+            troughcolor=BG_DARK,
+            bordercolor=BG_DARK,
+            arrowcolor=TEXT_BODY,
+            borderwidth=0,
+        )
+        style.map(
+            f"{orient}.TScrollbar",
+            background=[("active", ACCENT_OLIVE_HOVER)],
+        )
+
+
+def configure_zebra_tags(tree) -> None:
+    """Call once per Treeview right after creation. Pass tags=zebra_tag(i)
+    to each .insert() call so alternating rows get a slightly different
+    shade - makes it easier to track a row across columns."""
+    tree.tag_configure("even", background=PANEL_BG)
+    tree.tag_configure("odd", background=PANEL_BG_ALT)
+
+
+def zebra_tag(index: int) -> tuple:
+    return ("even",) if index % 2 == 0 else ("odd",)
