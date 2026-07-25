@@ -20,7 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from ahstats import export
+from ahstats import __version__, export
 from ahstats.db import CATEGORY_LABELS, DEFAULT_DB_PATH, StatsDB, tour_number
 
 STYPE = "pilot"
@@ -381,6 +381,30 @@ class PilotSmokeTests:
         empty and say so rather than showing stale or bogus rows."""
         self.assertEqual(self.app.squad_grid.visible_rows(), [])
         self.assertEqual(self.app.arena_grid.visible_rows(), [])
+
+    # -- build identification -----------------------------------------------
+
+    def test_window_title_carries_the_version(self):
+        """A screenshot should identify the build it came from."""
+        self.assertIn(__version__, self.app.title())
+
+    def test_masthead_shows_the_version(self):
+        found = self._find_labels_containing(self.app, f"v{__version__}")
+        self.assertTrue(found, f"no masthead label showing v{__version__}")
+
+    def _find_labels_containing(self, widget, text):
+        """Walk the widget tree looking for a label with this text - the
+        masthead labels aren't stored on the App, so find them live."""
+        matches = []
+        for child in widget.winfo_children():
+            try:
+                value = child.cget("text")
+            except Exception:
+                value = None
+            if isinstance(value, str) and text in value:
+                matches.append(value)
+            matches.extend(self._find_labels_containing(child, text))
+        return matches
 
     # -- exports ------------------------------------------------------------
 

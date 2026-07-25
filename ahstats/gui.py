@@ -8,7 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 import customtkinter as ctk
 from PIL import Image
 
-from ahstats import export, sync, theme
+from ahstats import __version__, export, sync, theme
 from ahstats import grid as gridmod
 from ahstats.client import AhScoreClient
 from ahstats.chart import TrendChart
@@ -39,7 +39,7 @@ def _fmt_hms(total_seconds) -> str:
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Aces High Stats")
+        self.title(f"Aces High Stats v{__version__}")
         self.geometry("1300x760")
         self.minsize(1200, 600)
         self.configure(fg_color=theme.BG_DARK)
@@ -96,10 +96,21 @@ class App(ctk.CTk):
 
         title_frame = ctk.CTkFrame(masthead, fg_color="transparent")
         title_frame.pack(side="left", pady=8)
+
+        # Version sits beside the title so it's on screen in any
+        # screenshot - a bug report that names the build is worth far more
+        # than one that doesn't.
+        title_row = ctk.CTkFrame(title_frame, fg_color="transparent")
+        title_row.pack(anchor="w")
         ctk.CTkLabel(
-            title_frame, text="ACES HIGH STATS", text_color=theme.TEXT_HEADING,
+            title_row, text="ACES HIGH STATS", text_color=theme.TEXT_HEADING,
             font=ctk.CTkFont(size=24, weight="bold"),
-        ).pack(anchor="w")
+        ).pack(side="left")
+        ctk.CTkLabel(
+            title_row, text=f"v{__version__}", text_color=theme.TEXT_BODY,
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(10, 0), pady=(8, 0))
+
         ctk.CTkLabel(
             title_frame, text="a homage to Spatula's original AHPilotStats",
             text_color=theme.TEXT_BODY, font=ctk.CTkFont(size=11),
