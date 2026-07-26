@@ -2,7 +2,49 @@
 
 A modern Python desktop application for viewing and analyzing [Aces High](https://www.hitechcreations.com/) MMOG pilot and squad statistics. AHSTATS scrapes and caches data from HiTech Creations' public stats pages into a SQLite database and presents it via a customtkinter GUI with interactive charts.
 
-![AHSTATS Interface](gui_screenshot.png)
+![Career Summary](docs/screenshots/01-career.png)
+
+It's a companion to [FSOStats](https://github.com/steelington/FSOStats), which
+does the same for Friday Squad Operations, and shares its palette and grid
+components.
+
+## 📸 The tour
+
+**Career Summary** - lifetime totals across every tour and every arena, or
+filtered to one arena at a time.
+
+**Tour Detail** - one tour, broken out by category, with the rank you finished
+at in each.
+
+![Tour Detail](docs/screenshots/02-tour-detail.png)
+
+**Tour History** - every tour you've flown in one grid, per category, in Stats
+or Score view, with running totals that follow the filters.
+
+![Tour History](docs/screenshots/03-tour-history.png)
+
+**Kills by Plane** - the full matrix: what you killed in each type, what you
+killed of it, what it killed you with, and what you died in. Career-wide, one
+tour, or grouped by model.
+
+![Kills by Plane](docs/screenshots/04-kills-by-plane.png)
+
+**Graphs** - seventeen trends over your whole career, per category - kills,
+K/D, sorties, hit percentage and the rest.
+
+![Graphs](docs/screenshots/05-graphs.png)
+
+**Arena Planes** - the arena-wide aircraft leaderboard for any tour.
+
+![Arena Planes](docs/screenshots/06-arena-planes.png)
+
+**Squad** - any squad's roster for any tour, with each member's kills, deaths
+and K/D.
+
+![Squad](docs/screenshots/07-squad.png)
+
+Every grid sorts, filters and exports to CSV: left-click a heading to sort,
+right-click it to filter that column.
 
 ## ✨ Features
 
