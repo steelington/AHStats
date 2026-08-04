@@ -10,7 +10,7 @@ Tours you flew before October 2007 were in the database all along and the app
 was hiding them. This release is mostly the fix for that, plus the things
 players asked for while reporting it.
 
-Reported by **Fugitive** (formerly **MDJOE**) and **Lusche** - this release
+Reported by **The Fugitive** and **Lusche** - this release
 exists because they took the time to say what was wrong. Thanks, gents.
 
 ### Fixed

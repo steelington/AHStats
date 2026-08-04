@@ -379,7 +379,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## 🙏 Credits
 
 - **Original AHPilotStats** by Spatula (legacy C# .NET version)
-- **Bug reports and testing**: Fugitive (formerly MDJOE) and Lusche, who found the missing pre-Tour-93 Main Arena tours
+- **Bug reports and testing**: The Fugitive and Lusche, who found the missing pre-Tour-93 Main Arena tours
 - **Data Source**: [HiTech Creations](https://www.hitechcreations.com/) public stats pages
 - **UI Theme**: Inspired by hitechcreations.com WW2 aesthetic
 - **Charts**: Powered by [Chart.js](https://www.chartjs.org/)
