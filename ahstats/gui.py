@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
@@ -13,11 +14,14 @@ from ahstats import grid as gridmod
 from ahstats.client import AhScoreClient
 from ahstats.chart import TrendChart
 from ahstats.grid import GridView
+from ahstats.picker import SearchableSelect
 from ahstats.db import (
     ARENA_CHOICES,
     CATEGORY_LABELS,
     SCORE_HEADERS,
     StatsDB,
+    parse_identity_ids,
+    tour_era,
     tour_number,
 )
 
@@ -62,6 +66,14 @@ class App(ctk.CTk):
         # "invalid command name".
         self._poll_after_id: str | None = None
         self._startup_after_id: str | None = None
+        self._progress_tick_id: str | None = None
+
+        # Published by the sync thread via progress_queue, read by the
+        # progress ticker.
+        self._progress_started_at: float | None = None
+        self._progress_current = 0
+        self._progress_total = 0
+        self._progress_frame = 0
 
         self._build_top_bar()
         self._build_tabs()
@@ -71,13 +83,13 @@ class App(ctk.CTk):
 
     def destroy(self):
         """Cancel pending timers before tearing the window down."""
-        for after_id in (self._poll_after_id, self._startup_after_id):
+        for after_id in (self._poll_after_id, self._startup_after_id, self._progress_tick_id):
             if after_id is not None:
                 try:
                     self.after_cancel(after_id)
                 except Exception:  # already fired, or interpreter going away
                     pass
-        self._poll_after_id = self._startup_after_id = None
+        self._poll_after_id = self._startup_after_id = self._progress_tick_id = None
         super().destroy()
 
     # ---------------- top bar ----------------
@@ -160,20 +172,30 @@ class App(ctk.CTk):
         ctk.CTkLabel(sync_mode_row, text="Sync Mode:").pack(side="left", padx=(8, 4))
         self.sync_mode_var = ctk.StringVar(value="Full History")
         ctk.CTkSegmentedButton(
-            sync_mode_row, values=["Full History", "Single Tour"],
+            sync_mode_row, values=["Full History", "Tour Range", "Single Tour"],
             variable=self.sync_mode_var, command=self.on_sync_mode_changed
         ).pack(side="left", padx=4)
 
         # Tour selector for single tour mode (initially hidden)
         self.single_tour_label = ctk.CTkLabel(sync_mode_row, text="Tour:")
         self.single_tour_var = ctk.StringVar()
-        self.single_tour_dropdown = ctk.CTkOptionMenu(
-            sync_mode_row, variable=self.single_tour_var, values=[""], width=200
+        self.single_tour_dropdown = SearchableSelect(
+            sync_mode_row, variable=self.single_tour_var, values=[], width=200,
+            placeholder="type to filter tours...",
         )
         self.fetch_tours_btn = ctk.CTkButton(
             sync_mode_row, text="Fetch Tours", command=self.on_fetch_tours_clicked,
             fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, width=100
         )
+
+        # Tour Range mode: tour numbers rather than labels, since that's
+        # how players talk about their own history ("tour 21 to today").
+        # Numbers are read within the selected arena, so 93 is
+        # unambiguous even though several arenas have a tour 93.
+        self.range_from_label = ctk.CTkLabel(sync_mode_row, text="Tours:")
+        self.range_from_entry = ctk.CTkEntry(sync_mode_row, width=70, placeholder_text="from")
+        self.range_to_label = ctk.CTkLabel(sync_mode_row, text="to")
+        self.range_to_entry = ctk.CTkEntry(sync_mode_row, width=70, placeholder_text="to")
 
         row2 = ctk.CTkFrame(self)
         row2.pack(fill="x", padx=20, pady=(0, 10))
@@ -197,9 +219,22 @@ class App(ctk.CTk):
         )
         self.status_label.pack(side="left", padx=12)
 
-        self.progress_bar = ctk.CTkProgressBar(self)
+        # Fetches are rate-limited to one every three seconds, so a bar
+        # that only moves when a tour lands sits still long enough to look
+        # hung. The bar carries the real progress; the line under it keeps
+        # counting so it's visibly alive between fetches.
+        progress_row = ctk.CTkFrame(self, fg_color="transparent")
+        progress_row.pack(fill="x", padx=20, pady=(0, 10))
+
+        self.progress_bar = ctk.CTkProgressBar(progress_row, height=16)
         self.progress_bar.set(0)
-        self.progress_bar.pack(fill="x", padx=20, pady=(0, 10))
+        self.progress_bar.pack(fill="x", pady=(0, 4))
+
+        self.progress_detail_label = ctk.CTkLabel(
+            progress_row, text="", font=ctk.CTkFont(size=11),
+            text_color="#8b93a1", anchor="w",
+        )
+        self.progress_detail_label.pack(fill="x")
 
     def _selected_arena(self) -> str | None:
         """None means 'All' - no arena filter."""
@@ -250,7 +285,7 @@ class App(ctk.CTk):
         stype = self.stype_var.get()
         dialog = ctk.CTkToplevel(self)
         dialog.title(f"Manage Identity Groups ({stype})")
-        dialog.geometry("480x420")
+        dialog.geometry("480x560")
         dialog.transient(self)
 
         top = ctk.CTkFrame(dialog)
@@ -265,11 +300,33 @@ class App(ctk.CTk):
         ctk.CTkLabel(form, text="Group Name:").pack(anchor="w", padx=4, pady=(4, 0))
         name_entry = ctk.CTkEntry(form, width=400, placeholder_text="e.g. MyTotals")
         name_entry.pack(fill="x", padx=4, pady=(0, 8))
-        ctk.CTkLabel(form, text="Game IDs (comma-separated, e.g. every name you've ever used):").pack(
+        ctk.CTkLabel(form, text="Game IDs - one per line, every name you've ever flown under:").pack(
             anchor="w", padx=4
         )
-        ids_entry = ctk.CTkEntry(form, width=400, placeholder_text="e.g. MDJOE, Fugitive")
-        ids_entry.pack(fill="x", padx=4, pady=(0, 8))
+        # A multi-line box rather than one comma-separated line: with a
+        # long list the single-line entry scrolled the earlier names out
+        # of sight, which read as a cap on how many a group could hold.
+        # There is no cap.
+        ids_box = ctk.CTkTextbox(form, width=400, height=140)
+        ids_box.pack(fill="x", padx=4, pady=(0, 4))
+
+        count_label = ctk.CTkLabel(form, text="", font=ctk.CTkFont(size=11), text_color="#8b93a1")
+        count_label.pack(anchor="w", padx=4, pady=(0, 8))
+
+        def read_ids() -> list[str]:
+            return parse_identity_ids(ids_box.get("1.0", "end"))
+
+        def write_ids(ids) -> None:
+            ids_box.delete("1.0", "end")
+            ids_box.insert("1.0", "\n".join(ids))
+            update_count()
+
+        def update_count(_event=None) -> None:
+            count = len(read_ids())
+            count_label.configure(text=f"{count} game ID(s) in this group - no limit")
+
+        ids_box.bind("<KeyRelease>", update_count)
+        update_count()
 
         status_label = ctk.CTkLabel(dialog, text="", text_color=theme.ACCENT_OLIVE)
         status_label.pack(anchor="w", padx=14)
@@ -281,19 +338,18 @@ class App(ctk.CTk):
         def on_existing_selected(value):
             if not value:
                 name_entry.delete(0, "end")
-                ids_entry.delete(0, "end")
+                write_ids([])
                 return
             members = self.db.get_identity_group_members(value, stype)
             name_entry.delete(0, "end")
             name_entry.insert(0, value)
-            ids_entry.delete(0, "end")
-            ids_entry.insert(0, ", ".join(members))
+            write_ids(members)
 
         existing_dropdown.configure(command=on_existing_selected)
 
         def on_save():
             name = name_entry.get().strip()
-            ids = [g.strip() for g in ids_entry.get().split(",") if g.strip()]
+            ids = read_ids()
             if not name or len(ids) < 2:
                 status_label.configure(
                     text="Enter a group name and at least 2 game IDs.", text_color=theme.ACCENT_RED
@@ -313,7 +369,7 @@ class App(ctk.CTk):
             self.db.delete_identity_group(name, stype)
             status_label.configure(text=f"Deleted '{name}'.", text_color=theme.ACCENT_OLIVE)
             name_entry.delete(0, "end")
-            ids_entry.delete(0, "end")
+            write_ids([])
             existing_var.set("")
             load_group_list()
             self.refresh_identity_view_dropdown()
@@ -332,16 +388,27 @@ class App(ctk.CTk):
 
         load_group_list()
 
-    def on_sync_mode_changed(self, _value=None):
-        """Toggle between Full History and Single Tour sync modes."""
-        mode = self.sync_mode_var.get()
-        if mode == "Single Tour":
-            # Show tour selector
-            self.single_tour_label.pack(side="left", padx=(12, 4))
-            self.single_tour_dropdown.pack(side="left", padx=4)
-            self.fetch_tours_btn.pack(side="left", padx=4)
-            self.sync_btn.configure(text="Sync This Tour")
+    # Widgets that belong to one sync mode only, so switching modes can
+    # hide the other modes' controls without naming them one by one.
+    _MODE_WIDGETS = {
+        "Single Tour": ("single_tour_label", "single_tour_dropdown", "fetch_tours_btn"),
+        "Tour Range": ("range_from_label", "range_from_entry", "range_to_label",
+                       "range_to_entry", "fetch_tours_btn"),
+    }
 
+    def on_sync_mode_changed(self, _value=None):
+        """Show whichever controls the chosen sync mode needs."""
+        mode = self.sync_mode_var.get()
+        for widgets in self._MODE_WIDGETS.values():
+            for name in widgets:
+                getattr(self, name).pack_forget()
+
+        for name in self._MODE_WIDGETS.get(mode, ()):
+            widget = getattr(self, name)
+            widget.pack(side="left", padx=(12, 4) if name.endswith("_label") else 4)
+
+        if mode == "Single Tour":
+            self.sync_btn.configure(text="Sync This Tour")
             if self._tour_label_to_id:
                 self.status_label.configure(
                     text=f"{len(self._tour_label_to_id)} tours available - select one and click 'Sync This Tour'",
@@ -352,11 +419,14 @@ class App(ctk.CTk):
                     text="Click 'Fetch Tours' to load the tour list, then pick one",
                     text_color="#ff9900"
                 )
+        elif mode == "Tour Range":
+            self.sync_btn.configure(text="Sync Tour Range")
+            self.status_label.configure(
+                text=f"Enter a first and last tour number in {self.arena_var.get()}, "
+                     f"then click 'Sync Tour Range'",
+                text_color=theme.ACCENT_OLIVE
+            )
         else:
-            # Hide tour selector
-            self.single_tour_label.pack_forget()
-            self.single_tour_dropdown.pack_forget()
-            self.fetch_tours_btn.pack_forget()
             self.sync_btn.configure(text="Sync Full History")
             self.status_label.configure(
                 text="Enter Pilot ID above, then click 'Sync Full History'",
@@ -440,7 +510,10 @@ class App(ctk.CTk):
         top.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(top, text="Tour Period:").pack(side="left", padx=4)
         self.tour_var = ctk.StringVar()
-        self.tour_dropdown = ctk.CTkOptionMenu(top, variable=self.tour_var, values=[""], command=self.on_tour_selected)
+        self.tour_dropdown = SearchableSelect(
+            top, variable=self.tour_var, values=[], width=200,
+            command=self.on_tour_selected, placeholder="type to filter tours...",
+        )
         self.tour_dropdown.pack(side="left", padx=4)
         ctk.CTkButton(
             top, text="Refresh Tour List", command=self.refresh_tour_dropdown,
@@ -504,9 +577,9 @@ class App(ctk.CTk):
 
         # Columns are re-applied on every refresh: the Score view's
         # columns depend on which metrics HTC publishes for the category.
-        self.category_grid = GridView(frame, height=20, wide=("Details", "Arena"))
+        self.category_grid = GridView(frame, height=20, wide=self._WIDE_COLUMNS)
         self._add_grid_toolbar(frame, self.category_grid)
-        self.category_grid.set_columns(self._STATS_COLUMNS, wide=("Details", "Arena"))
+        self.category_grid.set_columns(self._STATS_COLUMNS, wide=self._WIDE_COLUMNS)
         self.category_grid.pack(fill="both", expand=True, padx=10, pady=(0, 4))
         self.category_totals_label = self._build_totals_footer(frame, self.category_grid)
 
@@ -569,9 +642,13 @@ class App(ctk.CTk):
         label.configure(text="     ".join(totals) if totals else "")
 
     _STATS_COLUMNS = [
-        "Tour", "Details", "Arena", "Kills", "Assists", "Sorties", "Landed",
+        "Tour", "Details", "Arena", "Era", "Kills", "Assists", "Sorties", "Landed",
         "Bailed", "Ditched", "Captured", "Deaths", "Disco", "Time",
     ]
+
+    # Details/Arena/Era hold text rather than numbers, so they get the
+    # wider, left-aligned column treatment.
+    _WIDE_COLUMNS = ("Details", "Arena", "Era")
 
     def refresh_category(self):
         gameid = self._effective_gameid()
@@ -583,7 +660,7 @@ class App(ctk.CTk):
         )
 
         if not gameid:
-            self.category_grid.set_columns(self._STATS_COLUMNS, wide=("Details", "Arena"))
+            self.category_grid.set_columns(self._STATS_COLUMNS, wide=self._WIDE_COLUMNS)
             self.category_grid.set_rows([])
             self.category_status_label.configure(text="Enter a Pilot ID above.")
             return
@@ -599,10 +676,10 @@ class App(ctk.CTk):
 
     def _refresh_category_stats(self, gameid, stype, category, arena):
         rows = self.db.get_category_stats_series(gameid, stype, category, arena=arena)
-        self.category_grid.set_columns(self._STATS_COLUMNS, wide=("Details", "Arena"))
+        self.category_grid.set_columns(self._STATS_COLUMNS, wide=self._WIDE_COLUMNS)
         self.category_grid.set_rows([
             (
-                tour_number(row["tourid"]), row["label"], row["arena"],
+                tour_number(row["tourid"]), row["label"], row["arena"], tour_era(row["tourid"]),
                 row["kills"], row["assists"], row["sorties"], row["landed"],
                 row["bailed"], row["ditched"], row["captured"], row["deaths"],
                 row["discos"], _fmt_hms(row["time_seconds"]),
@@ -616,11 +693,11 @@ class App(ctk.CTk):
 
     def _refresh_category_scores(self, gameid, stype, category, arena):
         metrics, rows = self.db.get_category_scores_series(gameid, stype, category, arena=arena)
-        columns = ["Tour", "Details", "Arena"] + [SCORE_HEADERS.get(m, m) for m in metrics]
-        self.category_grid.set_columns(columns, wide=("Details", "Arena"))
+        columns = ["Tour", "Details", "Arena", "Era"] + [SCORE_HEADERS.get(m, m) for m in metrics]
+        self.category_grid.set_columns(columns, wide=self._WIDE_COLUMNS)
         table = []
         for row in rows:
-            values = [tour_number(row["tourid"]), row["label"], row["arena"]]
+            values = [tour_number(row["tourid"]), row["label"], row["arena"], tour_era(row["tourid"])]
             for metric in metrics:
                 score = row.get(metric)
                 values.append("" if score is None else round(score, 2))
@@ -815,8 +892,9 @@ class App(ctk.CTk):
         ).pack(side="left", padx=4)
         ctk.CTkLabel(top, text="Tour:").pack(side="left", padx=(12, 4))
         self.squad_tour_var = ctk.StringVar()
-        self.squad_tour_dropdown = ctk.CTkOptionMenu(
-            top, variable=self.squad_tour_var, values=[""], width=200
+        self.squad_tour_dropdown = SearchableSelect(
+            top, variable=self.squad_tour_var, values=[], width=200,
+            placeholder="type to filter tours...",
         )
         self.squad_tour_dropdown.pack(side="left", padx=4)
         ctk.CTkButton(
@@ -841,6 +919,20 @@ class App(ctk.CTk):
         )
         self.squad_hint_label.pack(anchor="w", padx=10, pady=(0, 10))
 
+        # Standing note: "not part of a squad" gets reported as a bug in
+        # this app often enough to be worth heading off. It's HiTech's
+        # own answer, passed straight through.
+        ctk.CTkLabel(
+            frame,
+            text=("Note: \"not part of a squad\" and similar messages come from HiTech's "
+                  "squad pages, not from this app. Some tours have no squad record on their "
+                  "end - the website shows the same thing. Nothing to report."),
+            font=ctk.CTkFont(size=10),
+            text_color="#8b93a1",
+            wraplength=900,
+            justify="left",
+        ).pack(anchor="w", padx=10, pady=(0, 8))
+
         self.squad_grid = self._make_grid(
             frame, ["Member", "Kills", "Kill %", "Deaths", "Death %", "K/D", "Active"], height=18
         )
@@ -853,8 +945,9 @@ class App(ctk.CTk):
         top.pack(fill="x", padx=10, pady=10)
         ctk.CTkLabel(top, text="Tour:").pack(side="left", padx=4)
         self.arena_tour_var = ctk.StringVar()
-        self.arena_tour_dropdown = ctk.CTkOptionMenu(
-            top, variable=self.arena_tour_var, values=[""], width=200
+        self.arena_tour_dropdown = SearchableSelect(
+            top, variable=self.arena_tour_var, values=[], width=200,
+            placeholder="type to filter tours...",
         )
         self.arena_tour_dropdown.pack(side="left", padx=4)
         ctk.CTkButton(
@@ -903,6 +996,25 @@ class App(ctk.CTk):
                 return members
         return []
 
+    def _parse_tour_range(self) -> tuple[int, int] | None:
+        """The two tour-number boxes as an inclusive (first, last), or
+        None with a warning shown if they don't make sense. Entered
+        backwards is fine - it's an obvious slip, so just swap them."""
+        raw_from = self.range_from_entry.get().strip()
+        raw_to = self.range_to_entry.get().strip()
+        try:
+            first, last = int(raw_from), int(raw_to)
+        except ValueError:
+            messagebox.showwarning(
+                "Tour Range",
+                "Enter a first and last tour number, e.g. 21 and 92.",
+            )
+            return None
+        if first < 1 or last < 1:
+            messagebox.showwarning("Tour Range", "Tour numbers start at 1.")
+            return None
+        return (min(first, last), max(first, last))
+
     def on_sync_clicked(self):
         gameids = self._sync_target_ids()
         if not gameids:
@@ -926,7 +1038,7 @@ class App(ctk.CTk):
             self.sync_btn.configure(state="disabled")
             status = f"Syncing {label} for {len(gameids)} member(s)..." if len(gameids) > 1 else f"Syncing {label}..."
             self.status_label.configure(text=status)
-            self.progress_bar.set(0.5)
+            self._start_progress(len(gameids))
 
             def worker():
                 try:
@@ -953,8 +1065,25 @@ class App(ctk.CTk):
             self.sync_thread.start()
             return
 
-        # Handle Full History mode
+        # Full History, or the same thing narrowed to a span of tours
+        tour_range = None
+        if sync_mode == "Tour Range":
+            tour_range = self._parse_tour_range()
+            if tour_range is None:
+                return
+
         all_tours = self.db.get_tours(arena=arena)
+        if tour_range:
+            first, last = tour_range
+            all_tours = [t for t in all_tours if first <= tour_number(t["tourid"]) <= last]
+            if not all_tours:
+                messagebox.showwarning(
+                    "No Tours In Range",
+                    f"No cached {self.arena_var.get()} tours between {first} and {last}.\n\n"
+                    f"Click 'Fetch Tours' first if the tour list hasn't been loaded yet.",
+                )
+                return
+
         to_fetch_count = 0
         for gid in gameids:
             cached_tourids = self.db.get_pilot_tourids(gid, stype, arena=arena)
@@ -978,7 +1107,7 @@ class App(ctk.CTk):
         self.sync_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.status_label.configure(text="Starting sync...")
-        self.progress_bar.set(0)
+        self._start_progress(to_fetch_count)
         stop_event = self.stop_event
 
         def worker():
@@ -991,6 +1120,7 @@ class App(ctk.CTk):
                     sync.sync_pilot(
                         self.client, self.db, gid, stype, arena=arena,
                         progress_cb=progress_cb, stop_event=stop_event,
+                        tour_range=tour_range,
                     )
             except Exception as e:
                 self.progress_queue.put(sync.SyncProgress(0, 1, f"Error: {e}"))
@@ -999,6 +1129,58 @@ class App(ctk.CTk):
 
         self.sync_thread = threading.Thread(target=worker, daemon=True)
         self.sync_thread.start()
+
+    # ---------------- progress ----------------
+
+    _SPINNER_FRAMES = "|/-\\"
+
+    def _start_progress(self, total: int = 0) -> None:
+        self._progress_started_at = time.monotonic()
+        self._progress_current = 0
+        self._progress_total = total
+        self._progress_frame = 0
+        self.progress_bar.set(0)
+        if self._progress_tick_id is None:
+            self._tick_progress()
+
+    def _stop_progress(self, message: str = "") -> None:
+        if self._progress_tick_id is not None:
+            self.after_cancel(self._progress_tick_id)
+            self._progress_tick_id = None
+        self._progress_started_at = None
+        self.progress_detail_label.configure(text=message)
+
+    def _tick_progress(self) -> None:
+        """Redraws the detail line four times a second while a sync runs.
+
+        Nothing here talks to the network - it's reading counters the sync
+        thread has already published - so the elapsed clock and spinner
+        keep moving through the three-second gap between fetches."""
+        if self._progress_started_at is None:
+            self._progress_tick_id = None
+            return
+
+        elapsed = time.monotonic() - self._progress_started_at
+        self._progress_frame = (self._progress_frame + 1) % len(self._SPINNER_FRAMES)
+        spinner = self._SPINNER_FRAMES[self._progress_frame]
+
+        parts = [spinner]
+        if self._progress_total:
+            done, total = self._progress_current, self._progress_total
+            parts.append(f"tour {done} of {total}")
+            parts.append(f"{done / total * 100:.0f}%")
+        parts.append(f"{_fmt_hms(elapsed)} elapsed")
+
+        # Rate is measured rather than assumed: the 3s floor is a minimum,
+        # and HiTech's own response time sits on top of it.
+        if self._progress_total and self._progress_current >= 2:
+            per_tour = elapsed / self._progress_current
+            remaining = (self._progress_total - self._progress_current) * per_tour
+            if remaining > 0:
+                parts.append(f"about {_fmt_hms(remaining)} left")
+
+        self.progress_detail_label.configure(text="   ".join(parts))
+        self._progress_tick_id = self.after(250, self._tick_progress)
 
     def on_stop_clicked(self):
         self.stop_event.set()
@@ -1040,7 +1222,7 @@ class App(ctk.CTk):
         self.sync_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
         self.status_label.configure(text="Resuming sync...")
-        self.progress_bar.set(0)
+        self._start_progress()
 
         stop_event = self.stop_event
 
@@ -1069,12 +1251,19 @@ class App(ctk.CTk):
                     self.status_label.configure(text=item.message)
                     if item.total:
                         self.progress_bar.set(item.current / item.total)
+                        self._progress_current = item.current
+                        self._progress_total = item.total
                     continue
 
                 tag = item[0]
                 if tag == "DONE_SYNC":
                     self.sync_btn.configure(state="normal")
                     self.stop_btn.configure(state="disabled")
+                    self._stop_progress(
+                        f"Finished {self._progress_current} tour(s) in "
+                        f"{_fmt_hms(time.monotonic() - self._progress_started_at)}"
+                        if self._progress_started_at else ""
+                    )
                     self.refresh_career()
                     self.refresh_tour_dropdown()
                     self.refresh_planes()
@@ -1095,6 +1284,7 @@ class App(ctk.CTk):
                 elif tag == "BACKFILL_DONE":
                     self.backfill_btn.configure(state="normal")
                     self.stop_btn.configure(state="disabled")
+                    self._stop_progress()
                     self.status_label.configure(
                         text=f"Backfill complete - filled {item[1]} tour(s)",
                         text_color=theme.ACCENT_OLIVE,
@@ -1104,6 +1294,7 @@ class App(ctk.CTk):
                 elif tag == "BACKFILL_ERROR":
                     self.backfill_btn.configure(state="normal")
                     self.stop_btn.configure(state="disabled")
+                    self._stop_progress()
                     self.status_label.configure(text=f"Backfill error: {item[1]}", text_color="#ff0000")
                 elif tag == "TOUR_FETCH_ERROR":
                     self.fetch_tour_btn.configure(state="normal")
@@ -1182,7 +1373,7 @@ class App(ctk.CTk):
         labels = [t["label"] for t in tours]
 
         # Update Tour Detail dropdown
-        self.tour_dropdown.configure(values=labels or [""])
+        self.tour_dropdown.configure(values=labels)
         if labels:
             self.tour_var.set(labels[0])
             self.on_tour_selected(labels[0])
@@ -1192,7 +1383,7 @@ class App(ctk.CTk):
             self.tour_status_label.configure(text="")
 
         # Also update Squad dropdown
-        self.squad_tour_dropdown.configure(values=labels or [""])
+        self.squad_tour_dropdown.configure(values=labels)
         if labels:
             self.squad_tour_var.set(labels[0])
             self.squad_status_label.configure(
@@ -1211,7 +1402,7 @@ class App(ctk.CTk):
             self.squad_hint_label.pack(anchor="w", padx=10, pady=(0, 10))
 
         # Also update Arena Planes dropdown
-        self.arena_tour_dropdown.configure(values=labels or [""])
+        self.arena_tour_dropdown.configure(values=labels)
         if labels:
             self.arena_tour_var.set(labels[0])
             self.arena_status_label.configure(
@@ -1230,7 +1421,7 @@ class App(ctk.CTk):
             self.arena_hint_label.pack(anchor="w", padx=10, pady=(0, 10))
 
         # Also update Single Tour dropdown (for sync mode)
-        self.single_tour_dropdown.configure(values=labels or [""])
+        self.single_tour_dropdown.configure(values=labels)
         if labels:
             self.single_tour_var.set(labels[0])
 
@@ -1337,7 +1528,7 @@ class App(ctk.CTk):
         elif not planes:
             self.planes_model_var.set("")
 
-    _MODEL_COLUMNS = ["Tour", "Details", "Arena", "Kills In", "Kills Of", "Killed By", "Died In", "Kills/Death"]
+    _MODEL_COLUMNS = ["Tour", "Details", "Arena", "Era", "Kills In", "Kills Of", "Killed By", "Died In", "Kills/Death"]
     _PLANE_COLUMNS = ["Plane", "Kills In", "Kills Of", "Killed By", "Died In"]
 
     def refresh_planes(self):
@@ -1393,7 +1584,7 @@ class App(ctk.CTk):
     def _refresh_planes_by_model(self, gameid):
         arena = self._selected_arena()
         plane = self.planes_model_var.get()
-        self.planes_grid.set_columns(self._MODEL_COLUMNS, wide=("Details", "Arena"))
+        self.planes_grid.set_columns(self._MODEL_COLUMNS, wide=self._WIDE_COLUMNS)
         if not plane:
             self.planes_status_label.configure(
                 text="No per-plane data cached yet - use 'Backfill Plane Data' or sync a tour."
@@ -1409,7 +1600,7 @@ class App(ctk.CTk):
             # Spatula's Kills/Death column: deaths+1, so a tour with kills
             # and no deaths still gets a finite, comparable number.
             table.append((
-                tour_number(row["tourid"]), row["label"], row["arena"],
+                tour_number(row["tourid"]), row["label"], row["arena"], tour_era(row["tourid"]),
                 kills_in, row["kills_of"], row["killed_by"], died_in,
                 round(kills_in / (died_in + 1), 2),
             ))
@@ -1446,6 +1637,7 @@ class App(ctk.CTk):
         self.stop_event.clear()
         self.backfill_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
+        self._start_progress(len(missing))
 
         def worker():
             try:
@@ -1510,10 +1702,20 @@ class App(ctk.CTk):
         self.squad_grid.set_rows([])
         if not squad_name:
             self.squad_status_label.configure(
-                text="No squad found for that player/tour",
+                text="HiTech reports no squad for that player in that tour",
                 text_color="#999"
             )
-            messagebox.showinfo("No data", "No squad found for that player/tour.")
+            messagebox.showinfo(
+                "No squad for that tour",
+                "HiTech's squad page answered that this player wasn't in a "
+                "squad for the tour you picked.\n\n"
+                "That answer comes from their server, not from this app - it's "
+                "the same thing you'd see looking the player up on the website. "
+                "It's normal for tours before the player joined a squad, and "
+                "some older tours are simply missing squad records on HiTech's "
+                "end.\n\n"
+                "Nothing to report here - try a different tour."
+            )
             return
 
         self.squad_status_label.configure(

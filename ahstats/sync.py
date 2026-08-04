@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from ahstats.client import AhScoreClient
-from ahstats.db import StatsDB
+from ahstats.db import StatsDB, tour_number
 from bs4 import BeautifulSoup
 
 logger = logging.getLogger('ahstats.sync')
@@ -168,6 +168,7 @@ def sync_pilot(
     progress_cb: ProgressCallback = None,
     stop_event: threading.Event | None = None,
     resume_sync_id: str | None = None,
+    tour_range: tuple[int, int] | None = None,
 ) -> int:
     """Fetch every tour we don't already have cached for this pilot, plus
     any tour that's still in progress. Pass arena (e.g. 'Melee (MA)') to
@@ -176,11 +177,18 @@ def sync_pilot(
 
     Args:
         resume_sync_id: If provided, resume from an interrupted sync session
+        tour_range: (first, last) tour numbers, inclusive, to narrow the
+            sync to one span - a pilot who only flew a stretch of their
+            career in this arena shouldn't have to fetch three hundred
+            tours at three seconds apiece to get it.
     """
     stop_event = stop_event or threading.Event()
     ensure_tour_list(client, db, progress_cb)
 
     all_tours = db.get_tours(arena=arena)
+    if tour_range:
+        first, last = min(tour_range), max(tour_range)
+        all_tours = [t for t in all_tours if first <= tour_number(t["tourid"]) <= last]
     cached_tourids = db.get_pilot_tourids(gameid, stype, arena=arena)
 
     # Resume from checkpoint if provided

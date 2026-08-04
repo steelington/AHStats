@@ -19,7 +19,9 @@ at in each.
 ![Tour Detail](docs/screenshots/02-tour-detail.png)
 
 **Tour History** - every tour you've flown in one grid, per category, in Stats
-or Score view, with running totals that follow the filters.
+or Score view, with running totals that follow the filters. The **Era** column
+marks the tours flown in the single Main Arena that ran up to Tour 92, before
+the 2007 split into Late/Mid/Early War.
 
 ![Tour History](docs/screenshots/03-tour-history.png)
 
@@ -46,6 +48,12 @@ and K/D.
 Every grid sorts, filters and exports to CSV: left-click a heading to sort,
 right-click it to filter that column.
 
+Every tour picker is a search box: type any part of a tour's name to filter the
+list, and Enter takes the first match - typing `Tour 21` finds Tour 21, not
+Tour 210.
+
+![Searchable tour picker](docs/screenshots/09-tour-picker.png)
+
 ## ✨ Features
 
 ### 📊 **Comprehensive Statistics**
@@ -61,18 +69,32 @@ right-click it to filter that column.
 - **Self-Contained HTML Exports** - Beautiful reports with embedded Chart.js visualizations
 
 ### 💾 **Smart Caching & Sync**
+- **Three sync modes** - Full History, Tour Range (a span of tour numbers), or Single Tour
 - **Intelligent Fetching** - Only fetches new tours, re-fetches live tours automatically
+- **Live progress** - Which tour of how many, percent done, elapsed time and a measured estimate of the time left
 - **Progress Persistence** - Resume interrupted syncs from where you left off
 - **Error Tracking** - View and retry failed tour fetches
 - **Comprehensive Logging** - All operations logged to `ahstats.log`
 
+### 👥 **Identity Groups**
+Changed your name over the years? Combine any number of game IDs into one
+career view (**Manage Identity Groups** on the top bar) - one ID per line, no
+limit on how many.
+
 ### 🌐 **Multi-Arena Support**
 Supports all Aces High arenas:
-- Melee (MA)
+- Melee (MA) - including the single Main Arena that ran up to Tour 92
 - AvA (CT)
 - WWI
 - Early War
 - Mid War
+
+Aces High ran one Main Arena through Tour 92; from Tour 93 it split into
+Late/Mid/Early War, and the Late War arena - later renamed Melee - carried on
+the Main Arena's tour numbering unbroken (Tour 92 ends 2007-09-30, Late War
+Tour 93 begins 2007-10-01). AHSTATS treats them as the one continuous career
+they are, so **Melee (MA)** reaches all the way back to Tour 12 and December
+2000. The **Era** column tells the two apart where it matters.
 
 ## 🚀 Installation
 
@@ -128,6 +150,22 @@ The exe lands in `dist/AHStats.exe`. It stores its database, cache, and log in `
 
 > **Note**: First sync for a pilot with 100+ tours may take 5-10 minutes due to respectful rate limiting.
 
+The progress bar reports which tour of how many, percent done, elapsed time and
+a measured estimate of the time remaining, so you can tell a slow sync from a
+stuck one.
+
+**Tour Range** (a stretch of your career, without fetching all of it):
+
+1. Enter your pilot ID and select your arena as above
+2. Switch Sync Mode to **"Tour Range"**
+3. Click **"Fetch Tours"** if the tour list hasn't been loaded yet
+4. Type a first and last tour number - e.g. `21` and `92` - and click **"Sync Tour Range"**
+
+Tour numbers are read within the arena you have selected. Entering them
+backwards is fine.
+
+![Tour Range sync mode](docs/screenshots/08-sync-tour-range.png)
+
 **Single Tour** (just want the latest month, or one specific tour):
 
 1. Enter your pilot ID and select your arena as above
@@ -135,13 +173,19 @@ The exe lands in `dist/AHStats.exe`. It stores its database, cache, and log in `
 3. Click **"Fetch Tours"** to load the tour list into the dropdown (only needed once - after that the list is cached)
 4. Pick a tour from the dropdown and click **"Sync This Tour"**
 
+The tour picker is a search box - type any part of a tour's name to filter the
+list. Enter takes the first match, and an exact match sorts ahead of tours that
+merely contain the same digits.
+
 ### Viewing Statistics
 
 - **Career Summary** - Aggregated totals across all synced tours
 - **Tour Detail** - Select a tour from dropdown for detailed breakdown
+- **Tour History** - Every tour in one grid, per category, in Stats or Score view. The **Era** column marks pre-Tour-93 Main Arena tours
 - **Kills by Plane** - Aircraft kill matrix (kills in/of, killed by, died in). Use the **Scope** toggle to switch between **Career** (all synced tours) and **Selected Tour** (follows whichever tour is picked on the Tour Detail tab)
-- **Squad** - Look up squad rosters for a specific tour
+- **Squad** - Look up squad rosters for a specific tour. "Not part of a squad" is HiTech's own answer for some players and tours, not a fault in this app
 - **Arena Planes** - View arena-wide aircraft leaderboards
+- **Graphs** - 17 trend types across all four categories
 
 ### Exporting Data
 
@@ -170,14 +214,18 @@ If some tours fail to fetch (network issues, parse errors):
 
 ### Core Modules
 
-- **`gui.py`** (478 lines) - customtkinter-based desktop GUI with 5 tabs
-- **`db.py`** (600+ lines) - SQLite persistence with thread-safe access and progress tracking
-- **`parser.py`** (502 lines) - BeautifulSoup HTML parsers for HiTech stats pages
-- **`client.py`** (178 lines) - Rate-limited HTTP client with SSL cert handling
-- **`sync.py`** (180+ lines) - Fetch orchestration with checkpointing and error recovery
-- **`export.py`** (250+ lines) - CSV and HTML export with Chart.js integration
-- **`theme.py`** (65 lines) - UI theming with military/aviation aesthetic
-- **`logger.py`** (30 lines) - Centralized logging configuration
+- **`gui.py`** (~1,800 lines) - customtkinter-based desktop GUI with 7 tabs
+- **`db.py`** (~900 lines) - SQLite persistence with thread-safe access, arena/era classification and progress tracking
+- **`parser.py`** (~530 lines) - BeautifulSoup HTML parsers for HiTech stats pages
+- **`export.py`** (~360 lines) - CSV and HTML export with Chart.js integration
+- **`grid.py`** (~280 lines) - Sortable, filterable, exportable grid widget
+- **`sync.py`** (~260 lines) - Fetch orchestration with checkpointing and error recovery
+- **`picker.py`** (~235 lines) - Type-to-filter dropdown for the long tour lists
+- **`client.py`** (~190 lines) - Rate-limited HTTP client with SSL cert handling
+- **`chart.py`** (~170 lines) - Trend charts for the Graphs tab
+- **`theme.py`** (~100 lines) - UI theming with military/aviation aesthetic
+- **`paths.py`** (~45 lines) - App data / bundled resource locations
+- **`logger.py`** (~35 lines) - Centralized logging configuration
 
 ### Data Flow
 
@@ -255,13 +303,16 @@ HiTech's HTML is table-based with no CSS classes/IDs:
 Run the test suite:
 
 ```bash
-python -m tests
+python -m pytest tests/ -q
 ```
 
 Test coverage includes:
 - Parser validation with real HTML fixtures
 - Edge case handling (invalid HTML, missing data)
 - Unicode character support
+- Arena/era classification of tour ids, and tour-range narrowing
+- The type-to-filter tour picker's match ranking
+- A GUI smoke test that builds every tab against the local cache
 
 ## 🔧 Development
 
@@ -271,20 +322,29 @@ Test coverage includes:
 ahstats/
 ├── ahstats/           # Main package
 │   ├── gui.py         # Desktop GUI
-│   ├── db.py          # Database layer
+│   ├── db.py          # Database layer, arena/era classification
 │   ├── parser.py      # HTML parsers
 │   ├── client.py      # HTTP client
 │   ├── sync.py        # Sync orchestration
 │   ├── export.py      # Data export
+│   ├── grid.py        # Sortable/filterable grid widget
+│   ├── picker.py      # Type-to-filter dropdown
+│   ├── chart.py       # Trend charts
 │   ├── theme.py       # UI theming
+│   ├── paths.py       # App data / resource paths
 │   ├── logger.py      # Logging setup
 │   └── assets/        # Icons, themes
 ├── tests/             # Unit tests
 │   ├── test_parser.py
+│   ├── test_tours.py
+│   ├── test_widgets.py
+│   ├── test_gui_smoke.py
 │   └── fixtures/      # Sample HTML
+├── docs/screenshots/  # README screenshots
 ├── legacy_source/     # Original C# app (reference)
 ├── app.py             # Entry point
 ├── requirements.txt   # Dependencies
+├── CHANGELOG.md       # Release history
 ├── CLAUDE.md          # Development guide
 └── README.md          # This file
 ```
@@ -319,6 +379,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## 🙏 Credits
 
 - **Original AHPilotStats** by Spatula (legacy C# .NET version)
+- **Bug reports and testing**: Fugitive (formerly MDJOE) and Lusche, who found the missing pre-Tour-93 Main Arena tours
 - **Data Source**: [HiTech Creations](https://www.hitechcreations.com/) public stats pages
 - **UI Theme**: Inspired by hitechcreations.com WW2 aesthetic
 - **Charts**: Powered by [Chart.js](https://www.chartjs.org/)
@@ -328,6 +389,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - **Bug Reports**: [Open an issue](https://github.com/steelington/AHStats/issues)
 - **Feature Requests**: [Open an issue](https://github.com/steelington/AHStats/issues) with "enhancement" label
 - **Questions**: Check [CLAUDE.md](CLAUDE.md) for architecture details
+- **What changed**: See [CHANGELOG.md](CHANGELOG.md)
 
 ## 🚧 Known Limitations
 
@@ -335,6 +397,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 2. **Rate Limiting**: 3+ second delay between requests is mandatory (good citizenship)
 3. **Live Tours**: Tours in progress are re-fetched each sync (stats change frequently)
 4. **Multi-Arena**: Some queries filter by arena, others aggregate across all arenas
+5. **Tours 1-11**: HiTech's own tour list starts at Tour 12, so the first eleven tours can't be fetched by any tool
+6. **Squad records**: HiTech answers "not part of a squad" for some players and tours - that's their data, and the website says the same
 
 ## 🗺️ Roadmap
 

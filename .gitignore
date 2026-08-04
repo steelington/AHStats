@@ -80,3 +80,11 @@ AHPilotStatsSetup/
 # Temporary files
 nul
 *.tmp
+
+# Personal scratch kept in the working copy: feedback notes jotted down
+# while testing, loose reference screenshots (the same material as
+# spatula/, which is ignored above), and a game network-config export.
+NOTES.txt
+Steely.png
+spatula.png
+netconxsettings.xml

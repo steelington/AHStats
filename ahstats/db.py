@@ -6,10 +6,13 @@ from __future__ import annotations
 
 import datetime
 import functools
+import logging
 import re
 import sqlite3
 import threading
 from pathlib import Path
+
+logger = logging.getLogger('ahstats.db')
 
 from ahstats.parser import PilotPlaneKills, PilotTourScores, PlaneLeaderboard, PlayerPlaneStats, SquadStats
 from ahstats.paths import get_app_data_dir
@@ -209,14 +212,48 @@ _ARENA_PREFIXES = [
 # Ordered for UI pickers: currently-active arenas first, retired ones last.
 ARENA_CHOICES = list(dict.fromkeys(name for _, name in _ARENA_PREFIXES))
 
+# Up to and including tour 92 there was one Main Arena, and HTC's tour ids
+# for it carry no arena prefix at all ("Tour92"). From tour 93 the arena
+# split into Late/Mid/Early War and the ids gained prefixes ("LWTour93"),
+# with the Late War arena - later renamed Melee - carrying on the Main
+# Arena's tour numbering unbroken: Tour92 ends 2007-09-30 and LWTour93
+# begins 2007-10-01. They are one continuous career, so they share an
+# arena here; the era below is what tells them apart.
+_MAIN_ARENA_TOURID_RE = re.compile(r"^Tour\d+$")
+
+ERA_MAIN_ARENA = "Main Arena"  # unprefixed tour ids, up to tour 92
+ERA_CURRENT = ""  # everything since the split needs no marker
+
 
 def _arena_for_tourid(tourid: str) -> str:
     for prefix, name in _ARENA_PREFIXES:
         if tourid.startswith(prefix):
             return name
-    if re.match(r"^Tour\d+$", tourid):
-        return "Legacy"
+    if _MAIN_ARENA_TOURID_RE.match(tourid):
+        return "Melee (MA)"
     return "Unknown"
+
+
+def parse_identity_ids(raw: str) -> list[str]:
+    """Game IDs as typed into the identity-group editor.
+
+    Accepts one per line or comma-separated, because people paste both.
+    Order is kept - it's usually chronological, which is how a player
+    thinks about their own name changes - and exact repeats are dropped,
+    since the same id twice would break the insert."""
+    ids: list[str] = []
+    for part in raw.replace(",", "\n").split("\n"):
+        name = part.strip()
+        if name and name not in ids:
+            ids.append(name)
+    return ids
+
+
+def tour_era(tourid: str) -> str:
+    """Marks the pre-split Main Arena tours so that, now they sit in the
+    same arena as the Melee tours that continue them, they're still
+    tellable apart in the grids. Empty for everything else."""
+    return ERA_MAIN_ARENA if _MAIN_ARENA_TOURID_RE.match(tourid) else ERA_CURRENT
 
 
 def tour_number(tourid: str) -> int:
@@ -318,6 +355,13 @@ class StatsDB:
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(SCHEMA)
         self._conn.commit()
+        # arena is stored, not computed on read, so a DB written by an
+        # older build keeps whatever classification that build derived.
+        # Cheap enough to re-derive on every open (a thousand-odd rows,
+        # writing only what actually differs).
+        changed = self.reclassify_arenas()
+        if changed:
+            logger.info("Reclassified the arena of %d cached tour(s)", changed)
 
     def close(self):
         self._conn.close()
@@ -843,9 +887,13 @@ class StatsDB:
             self._conn.execute(
                 "DELETE FROM identity_groups WHERE group_name=? AND stype=?", (group_name, stype)
             )
+            # Deduplicated because (group_name, stype, gameid) is the primary
+            # key: the same name listed twice would fail the insert and lose
+            # the whole group, and a repeat is a typing slip rather than
+            # something to report back at the user.
             self._conn.executemany(
                 "INSERT INTO identity_groups (group_name, stype, gameid) VALUES (?,?,?)",
-                [(group_name, stype, g.strip()) for g in gameids if g.strip()],
+                [(group_name, stype, g) for g in parse_identity_ids("\n".join(gameids))],
             )
 
     def delete_identity_group(self, group_name: str, stype: str) -> None:
