@@ -78,6 +78,11 @@ class App(ctk.CTk):
         self._build_top_bar()
         self._build_tabs()
         self.refresh_identity_view_dropdown()
+        # Fill the tour pickers from the cache straight away. Without
+        # this they start empty on every launch - the dropdown arrow
+        # opens nothing - until something happened to refresh them
+        # (a sync, or changing arena). Cache-only, so no network wait.
+        self.refresh_tour_dropdown()
         self._poll_queue()  # reschedules itself, storing _poll_after_id
         self._startup_after_id = self.after(500, self._check_incomplete_syncs)
 
@@ -1029,7 +1034,9 @@ class App(ctk.CTk):
 
         # Handle Single Tour mode
         if sync_mode == "Single Tour":
-            label = self.single_tour_var.get()
+            # Read the picker, not its variable: a tour typed into the box
+            # and never picked from the list is still the tour they meant.
+            label = self.single_tour_dropdown.get()
             tourid = self._tour_label_to_id.get(label)
             if not tourid:
                 messagebox.showwarning("No Tour Selected", "Select a tour from the dropdown first.")
@@ -1457,7 +1464,7 @@ class App(ctk.CTk):
     def on_fetch_single_tour(self):
         gameids = self._sync_target_ids()
         stype = self.stype_var.get()
-        label = self.tour_var.get()
+        label = self.tour_dropdown.get()
         tourid = self._tour_label_to_id.get(label)
         if not gameids or not tourid:
             messagebox.showwarning("Missing info", "Enter a pilot/squad ID and pick a tour first.")
@@ -1670,7 +1677,7 @@ class App(ctk.CTk):
 
     def on_fetch_squad(self):
         player = self.squad_player_entry.get().strip() or self.gameid_entry.get().strip()
-        label = self.squad_tour_var.get()
+        label = self.squad_tour_dropdown.get()
         tourid = self._tour_label_to_id.get(label)
 
         if not player:
@@ -1733,7 +1740,7 @@ class App(ctk.CTk):
     # ---------------- arena planes (one-off, per tour) ----------------
 
     def on_fetch_arena(self):
-        label = self.arena_tour_var.get()
+        label = self.arena_tour_dropdown.get()
         tourid = self._tour_label_to_id.get(label)
 
         if not tourid:

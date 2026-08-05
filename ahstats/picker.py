@@ -56,12 +56,23 @@ class SearchableSelect(ctk.CTkFrame):
         self.entry.bind("<Down>", lambda _e: self.open())
         self.entry.bind("<Escape>", lambda _e: self.close())
         self.entry.bind("<Return>", self._on_return)
+        # Typing a tour name and tabbing straight to the button is a
+        # selection too - see commit_typed().
+        self.entry.bind("<FocusOut>", self._on_focus_out)
         self._variable.trace_add("write", lambda *_: self._show_variable())
         self._show_variable()
 
     # -- value ---------------------------------------------------------
 
     def get(self) -> str:
+        """The selected value, resolving anything typed but not yet picked.
+
+        Callers must read this rather than the StringVar they passed in.
+        The variable only changes when a value is *chosen*, so a player
+        who types "Melee Tour 47" and clicks a Fetch button without ever
+        touching the list would otherwise have their typing ignored and
+        the previous selection - the newest tour - fetched instead."""
+        self.commit_typed()
         return self._variable.get()
 
     def set(self, value: str) -> None:
@@ -136,7 +147,10 @@ class SearchableSelect(ctk.CTkFrame):
         # responsive while it's open.
         self._click_binding = self.winfo_toplevel().bind("<Button-1>", self._on_global_click, add="+")
 
-    def close(self) -> None:
+    def close(self, keep_typed: bool = False) -> None:
+        """Dismiss the popup. `keep_typed` leaves the entry as the user
+        left it instead of snapping it back to the current selection,
+        for callers that are about to resolve that text themselves."""
         if self._popup is None:
             return
         try:
@@ -146,7 +160,8 @@ class SearchableSelect(ctk.CTkFrame):
         self._popup.destroy()
         self._popup = None
         self._listbox = None
-        self._show_variable()
+        if not keep_typed:
+            self._show_variable()
 
     def _place_popup(self) -> None:
         """Sit the popup directly under the entry, flipping above it if
@@ -225,6 +240,38 @@ class SearchableSelect(ctk.CTkFrame):
         hitting Enter is the whole interaction."""
         if self._popup is not None and self._filtered:
             self._choose(self._filtered[0])
+        else:
+            self.commit_typed()
+
+    def _on_focus_out(self, _event) -> None:
+        # While the popup is open the focus can land on the listbox;
+        # that's still mid-selection, so leave the typing alone.
+        if self._popup is None:
+            self.commit_typed()
+
+    def commit_typed(self) -> None:
+        """Turn whatever is in the entry into a selection.
+
+        The best match wins, ranked the same way the filtered list is,
+        so a fully typed tour name beats the tours that merely contain
+        it. Text that matches nothing is discarded and the entry snaps
+        back to the current selection - better than silently syncing a
+        tour the player never asked for."""
+        self.close(keep_typed=True)
+        needle = self.entry.get().strip().casefold()
+        if not needle:
+            self._show_variable()
+            return
+        if needle == self._variable.get().casefold():
+            return
+        matches = sorted(
+            (v for v in self._values if needle in v.casefold()),
+            key=lambda v: self._match_rank(v.casefold(), needle),
+        )
+        if matches:
+            self._select(matches[0])
+        else:
+            self._show_variable()
 
     def _on_pick(self, _event) -> None:
         if self._listbox is None:
@@ -234,7 +281,9 @@ class SearchableSelect(ctk.CTkFrame):
             self._choose(self._filtered[selection[0]])
 
     def _on_global_click(self, event) -> None:
-        """Close on a click outside the widget or its popup."""
+        """Close on a click outside the widget or its popup, keeping
+        whatever was typed - the click is usually on the very button
+        that acts on the selection."""
         if self._popup is None:
             return
         widget = event.widget
@@ -242,10 +291,13 @@ class SearchableSelect(ctk.CTkFrame):
             if widget in (self, self.entry, self.button, self._popup):
                 return
             widget = getattr(widget, "master", None)
-        self.close()
+        self.commit_typed()
 
     def _choose(self, value: str) -> None:
         self.close()
+        self._select(value)
+
+    def _select(self, value: str) -> None:
         self._variable.set(value)
         self._show_variable()
         if self._command:

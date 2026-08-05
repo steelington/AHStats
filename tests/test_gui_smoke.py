@@ -416,6 +416,31 @@ class PilotSmokeTests:
         self.app.sync_mode_var.set("Full History")
         self.app.on_sync_mode_changed()
 
+    def test_single_tour_picker_is_loaded_before_anything_is_synced(self):
+        """v1.1.0: the sync bar's tour picker was only filled by a sync
+        or an arena change, so on a normal launch its dropdown arrow
+        opened an empty list. It's built from the cache at startup now."""
+        cached = list(self.app.db.get_tours(arena=self.app._selected_arena()))
+        picker = self.app.single_tour_dropdown
+        self.assertEqual(len(picker._values), len(cached))
+        self.assertTrue(picker._values, "the test pilot's cache has tours")
+        picker.open()
+        self.addCleanup(picker.close)
+        self.assertIsNotNone(picker._popup, "the arrow must open a list")
+
+    def test_a_typed_tour_is_the_tour_that_gets_synced(self):
+        """v1.1.0: typing a tour into the sync box was ignored and the
+        newest tour synced instead."""
+        picker = self.app.single_tour_dropdown
+        oldest = picker._values[-1]
+        picker.entry.delete(0, "end")
+        picker.entry.insert(0, oldest)
+        self.assertEqual(picker.get(), oldest)
+        self.assertEqual(
+            self.app._tour_label_to_id.get(picker.get()),
+            self.app._tour_label_to_id[oldest],
+        )
+
     # -- sync progress ------------------------------------------------------
 
     def _progress_line(self) -> str:
@@ -685,3 +710,4 @@ class EaglerSmokeTest(PilotSmokeTests, unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

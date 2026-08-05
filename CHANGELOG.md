@@ -4,6 +4,46 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.1.1 - Single Tour sync actually picks the tour
+
+The type-to-filter tour pickers that arrived in v1.1.0 had two ways of not
+working, and Single Tour sync ran into both of them: the dropdown arrow opened
+nothing, and a tour typed into the box was ignored in favour of the newest tour.
+Both are fixed.
+
+Nothing to re-sync and nothing to delete - this release only changes the way the
+pickers behave. Your cache is untouched.
+
+Reported by **The Fugitive**, with both symptoms described precisely enough to
+reproduce them on the first try. That is worth a lot - thanks.
+
+### Fixed
+
+**The dropdown arrow opens the tour list.** The pickers were only filled after a
+sync finished, or after you changed the arena or the pilot/squad setting. On an
+ordinary launch - open the app, switch Sync Mode to Single Tour, click the arrow
+- the list had nothing in it yet, so the arrow appeared dead. Every tour picker
+in the app now loads from your local cache the moment the window opens: Single
+Tour sync, Tour Detail, Squad and Arena Planes alike.
+
+**Typing a tour name now selects that tour.** The box would take your typing,
+but the tour that got synced was whatever had been selected before - which, on a
+fresh launch, is always the newest tour. So no matter what you typed, you got
+the current tour. What is in the box is now read at the moment you click the
+button, so typing the tour and clicking Sync This Tour is the whole interaction;
+you never have to pick from the list.
+
+Typed text is matched the same way the filtered list is ranked, so the tour you
+typed wins over the ones that merely contain those digits - "Tour 21" finds
+Tour 21, not Tour 210 through 219. Text matching no tour at all is discarded and
+the box snaps back to the tour that is still selected, rather than quietly
+syncing something you never asked for.
+
+One naming note while you are in there: HiTech's own labels changed over the
+years, so the tours between the 2007 split and the Melee rename read as "Late
+War Tour 200", the recent ones as "Melee Tour 318", and the pre-split ones as
+plain "Tour 47". Filtering on the number alone finds any of them.
+
 ## v1.1.0 - The missing eighty-one tours
 
 Tours you flew before October 2007 were in the database all along and the app

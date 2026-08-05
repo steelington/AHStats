@@ -117,6 +117,61 @@ class SearchableSelectTests(unittest.TestCase):
         self.widget._choose("Melee Tour 300")
         self.assertEqual(self.widget.entry.get(), "Melee Tour 300")
 
+    # -- typing without picking ---------------------------------------
+    #
+    # These pin the bug a player reported in v1.1.0: the box would take
+    # your typing but sync the newest tour anyway. The variable only
+    # moved when a value was *chosen* from the list, and the sync read
+    # the variable, so a fully typed tour name was thrown away. Delete
+    # the commit_typed() call in get() and every test here fails.
+
+    def test_typed_text_becomes_the_selection_when_read(self):
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Tour 47")
+        self.assertEqual(self.widget.get(), "Tour 47")
+
+    def test_typed_text_wins_over_a_previous_selection(self):
+        self.widget._choose("Melee Tour 318")
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Tour 47")
+        self.assertEqual(self.widget.get(), "Tour 47")
+        self.assertEqual(self.chosen[-1], "Tour 47")
+
+    def test_typed_text_is_ranked_like_the_filtered_list(self):
+        """"Tour 21" typed in full must not resolve to Melee Tour 219."""
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Tour 21")
+        self.assertEqual(self.widget.get(), "Tour 21")
+
+    def test_text_matching_nothing_leaves_the_selection_alone(self):
+        self.widget._choose("Tour 47")
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Halibut")
+        self.assertEqual(self.widget.get(), "Tour 47")
+        self.assertEqual(self.widget.entry.get(), "Tour 47", "the entry snaps back")
+
+    def test_typing_then_clicking_away_still_selects(self):
+        """The click that dismisses the popup is usually the one on the
+        Fetch button, so the typing has to survive it."""
+        self.widget.open()
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Tour 47")
+        self.widget._refilter()
+        self.widget.commit_typed()
+        self.assertIsNone(self.widget._popup)
+        self.assertEqual(self.widget.get(), "Tour 47")
+
+    def test_enter_with_the_popup_closed_selects(self):
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Tour 47")
+        self.widget._on_return(None)
+        self.assertEqual(self.widget.get(), "Tour 47")
+
+    def test_an_emptied_box_keeps_the_current_selection(self):
+        self.widget._choose("Tour 47")
+        self.widget.entry.delete(0, "end")
+        self.assertEqual(self.widget.get(), "Tour 47")
+
     # -- reloading ----------------------------------------------------
 
     def test_configure_replaces_the_value_list(self):
@@ -131,3 +186,4 @@ class SearchableSelectTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
