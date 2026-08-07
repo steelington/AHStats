@@ -54,6 +54,20 @@ Tour 210.
 
 ![Searchable tour picker](docs/screenshots/09-tour-picker.png)
 
+The tour number is what it matches on, which matters because one arena's list
+carries three generations of HiTech's own naming - `Melee Tour 319` down to 201,
+`Late War Tour 200` down to 93, and plain `Tour 92` down to 12, all one
+continuous career. Type `47` and Tour 47 comes first, ahead of the tours that
+merely contain those digits:
+
+![Typing a tour number](docs/screenshots/10-tour-picker-number.png)
+
+The box arrives filled in with the current tour, so editing just the number is
+the natural move - and it finds the tour even when the arena name you left in
+place was never what that tour was called:
+
+![The arena name need not match](docs/screenshots/11-tour-picker-wrong-arena.png)
+
 ## ✨ Features
 
 ### 📊 **Comprehensive Statistics**
