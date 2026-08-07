@@ -54,6 +54,13 @@ def style_treeview() -> None:
         borderwidth=0,
         rowheight=28,
         font=tree_font,
+        # borderwidth=0 doesn't stop clam drawing its bevel: it frames
+        # every grid in near-white unless these are given dark values.
+        # BORDER_GRAY rather than the background, so the grid still has
+        # an edge - just one that belongs to the theme.
+        bordercolor=BORDER_GRAY,
+        lightcolor=BORDER_GRAY,
+        darkcolor=BORDER_GRAY,
     )
     style.map(
         "Treeview",

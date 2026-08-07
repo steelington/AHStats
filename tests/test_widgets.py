@@ -255,7 +255,7 @@ class SearchableSelectTests(unittest.TestCase):
         self.assertEqual(self.widget._filtered, ["Tour 12", "Tour 13"])
 
 
-class ScrollbarStyleTests(unittest.TestCase):
+class TtkStyleTests(unittest.TestCase):
     """The dropdown and every grid share one ttk scrollbar style.
 
     theme.py styled "Vertical.TScrollbar" and "Horizontal.TScrollbar"
@@ -286,6 +286,18 @@ class ScrollbarStyleTests(unittest.TestCase):
         for option in ("lightcolor", "darkcolor", "bordercolor"):
             with self.subTest(option=option):
                 self.assertEqual(style.lookup("TScrollbar", option), theme.BG_DARK)
+
+    def test_the_grids_are_not_framed_in_white(self):
+        """Same clam bevel, same near-white frame - borderwidth=0 does
+        not switch it off, only dark colours do."""
+        from tkinter import ttk
+
+        from ahstats import theme
+
+        style = ttk.Style(_root)
+        for option in ("lightcolor", "darkcolor", "bordercolor"):
+            with self.subTest(option=option):
+                self.assertEqual(style.lookup("Treeview", option), theme.BORDER_GRAY)
 
 
 if __name__ == "__main__":

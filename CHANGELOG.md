@@ -4,6 +4,23 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.1.3 - Scrollbars and grid borders that match the rest of the app
+
+Cosmetic only. Nothing to re-sync, nothing to delete, and nothing behaves
+differently - it just stops looking like two applications stitched together.
+
+### Fixed
+
+**Scrollbars are dark.** Every scrollbar in the app - down the grids, down the
+tour dropdown - was drawn in light grey with a ridged thumb and raised 3D
+arrows, a Windows 95 control sitting in the middle of a dark window. The theme
+had always meant to style them; it was setting the colours on a name none of
+the scrollbars actually used, so they quietly kept the defaults.
+
+**Grids are no longer framed in white.** Same cause: a near-white bevel drawn
+around every table. The grids now carry the same soft grey edge as the rest of
+the panels.
+
 ## v1.1.2 - Type a tour number, get that tour
 
 v1.1.1 read what you typed into the tour box, but then went looking for it in
