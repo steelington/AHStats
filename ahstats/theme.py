@@ -75,18 +75,32 @@ def style_treeview() -> None:
 
     # Scrollbars are ttk too, so they need the same hand-styling or they
     # come out in default light grey against the dark grids.
-    for orient in ("Vertical", "Horizontal"):
+    #
+    # "TScrollbar" has to be in this list. A ttk.Scrollbar keeps the bare
+    # class name as its style whatever -orient says: only its *layout* is
+    # picked by orientation. Styling just Vertical/Horizontal therefore
+    # configured two names nothing was using, and every scrollbar in the
+    # app - the grids and the tour dropdown alike - kept clam's light
+    # grey trough and 3D arrows in the middle of a dark window.
+    for name in ("TScrollbar", "Vertical.TScrollbar", "Horizontal.TScrollbar"):
         style.configure(
-            f"{orient}.TScrollbar",
+            name,
             background=BORDER_GRAY,
             troughcolor=BG_DARK,
             bordercolor=BG_DARK,
             arrowcolor=TEXT_BODY,
             borderwidth=0,
+            relief="flat",
+            gripcount=0,  # clam draws grip ridges on the thumb by default
+            # clam bevels every element with these two; left at their
+            # defaults they outline the thumb and both arrows in near-white.
+            lightcolor=BG_DARK,
+            darkcolor=BG_DARK,
         )
         style.map(
-            f"{orient}.TScrollbar",
-            background=[("active", ACCENT_OLIVE_HOVER)],
+            name,
+            background=[("active", ACCENT_OLIVE_HOVER), ("disabled", PANEL_BG)],
+            arrowcolor=[("disabled", BORDER_GRAY)],
         )
 
 

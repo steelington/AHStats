@@ -255,6 +255,39 @@ class SearchableSelectTests(unittest.TestCase):
         self.assertEqual(self.widget._filtered, ["Tour 12", "Tour 13"])
 
 
+class ScrollbarStyleTests(unittest.TestCase):
+    """The dropdown and every grid share one ttk scrollbar style.
+
+    theme.py styled "Vertical.TScrollbar" and "Horizontal.TScrollbar"
+    only, which are names no widget uses: a ttk.Scrollbar keeps the bare
+    class name as its style and picks its layout by orientation. So the
+    configuration applied to nothing and every scrollbar in a dark window
+    rendered in clam's light grey. Drop "TScrollbar" from the loop in
+    theme.style_treeview() and this fails."""
+
+    def test_the_class_style_is_the_one_that_gets_styled(self):
+        from tkinter import ttk
+
+        from ahstats import theme
+
+        style = ttk.Style(_root)
+        self.assertEqual(style.lookup("TScrollbar", "troughcolor"), theme.BG_DARK)
+        self.assertEqual(style.lookup("TScrollbar", "background"), theme.BORDER_GRAY)
+        self.assertEqual(style.lookup("TScrollbar", "arrowcolor"), theme.TEXT_BODY)
+
+    def test_the_bevel_colors_are_dark_too(self):
+        """Left at clam's defaults these outline the thumb and both
+        arrows in near-white, which is most of what looked broken."""
+        from tkinter import ttk
+
+        from ahstats import theme
+
+        style = ttk.Style(_root)
+        for option in ("lightcolor", "darkcolor", "bordercolor"):
+            with self.subTest(option=option):
+                self.assertEqual(style.lookup("TScrollbar", option), theme.BG_DARK)
+
+
 if __name__ == "__main__":
     unittest.main()
 
