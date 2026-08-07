@@ -12,6 +12,7 @@ the popup is a plain Tk Listbox rather than a menu.
 """
 from __future__ import annotations
 
+import re
 import tkinter as tk
 from tkinter import ttk
 
@@ -21,6 +22,23 @@ from ahstats import theme
 
 # Show at most this many rows at once; the rest are a scroll away.
 MAX_VISIBLE_ROWS = 14
+
+# Shown in place of the list when nothing matches, so an empty dropdown
+# reads as "no such tour" rather than as a broken one.
+NO_MATCH_ROW = "(no tour matches that)"
+
+_TRAILING_NUMBER = re.compile(r"(\d+)\s*$")
+
+
+def tour_number(text: str) -> int | None:
+    """The tour number at the end of a label or a typed filter.
+
+    Tour labels are an arena name and a number - "Melee Tour 319", "Late
+    War Tour 147", or just "Tour 47" for the pre-split Main Arena - and
+    players think in the number. Returns None for anything without one
+    ("Combat Theater", a half-typed word)."""
+    match = _TRAILING_NUMBER.search(text)
+    return int(match.group(1)) if match else None
 
 
 class SearchableSelect(ctk.CTkFrame):
@@ -53,6 +71,10 @@ class SearchableSelect(ctk.CTkFrame):
 
         self.entry.bind("<KeyRelease>", self._on_key)
         self.entry.bind("<Button-1>", lambda _e: self.open())
+        # Arriving in the box selects what's in it, so the first
+        # keystroke replaces the whole label. Without this the box is
+        # pre-filled with the current tour and typing appends to it.
+        self.entry.bind("<FocusIn>", self._on_focus_in)
         self.entry.bind("<Down>", lambda _e: self.open())
         self.entry.bind("<Escape>", lambda _e: self.close())
         self.entry.bind("<Return>", self._on_return)
@@ -198,35 +220,62 @@ class SearchableSelect(ctk.CTkFrame):
         # A match on the whole entry contents means the user hasn't
         # started filtering yet - show everything rather than the one row.
         if needle and needle != current.casefold():
-            matches = [v for v in self._values if needle in v.casefold()]
-            # An exact match goes first, then values starting with what was
-            # typed, then the rest. Without this, typing "Tour 21" buries
-            # Tour 21 under Tour 210-219, which all contain it as a
-            # substring - and Enter would take the wrong one. Sorting is
-            # stable, so within each tier the list keeps its newest-first
-            # order.
-            matches.sort(key=lambda v: self._match_rank(v.casefold(), needle))
-            self._filtered = matches
+            self._filtered = self._ranked(needle)
         else:
             self._filtered = list(self._values)
 
         self._listbox.delete(0, "end")
         for value in self._filtered:
             self._listbox.insert("end", value)
+        if not self._filtered:
+            self._listbox.insert("end", NO_MATCH_ROW)
         if select_current and current in self._filtered:
             index = self._filtered.index(current)
             self._listbox.selection_set(index)
             self._listbox.see(index)
 
+    def _ranked(self, needle: str) -> list[str]:
+        """Values matching `needle`, best match first.
+
+        `needle` must already be casefolded. Sorting is stable, so within
+        a tier the list keeps its newest-first order."""
+        wanted = tour_number(needle)
+        scored = []
+        for value in self._values:
+            rank = self._match_rank(value.casefold(), needle, wanted)
+            if rank is not None:
+                scored.append((rank, value))
+        scored.sort(key=lambda pair: pair[0])
+        return [value for _, value in scored]
+
     @staticmethod
-    def _match_rank(value: str, needle: str) -> int:
-        """0 for an exact match, 1 for a prefix, 2 for anything else.
-        Both arguments must already be casefolded."""
+    def _match_rank(value: str, needle: str, wanted: int | None) -> int | None:
+        """How well one value matches, lower being better; None for no
+        match at all. `value` and `needle` must both be casefolded.
+
+        The tour number outranks a plain substring for two reasons, both
+        of them things players actually did:
+
+        - Typing the bare number. "47" appears in Tour 47, Late War Tour
+          147 and Melee Tour 247, and the newest-first list offers 247 -
+          so Enter synced a tour thirty years of arena time away from the
+          one asked for.
+        - Editing the number in the box without touching the arena name.
+          The picker starts filled in with the current tour, so changing
+          "Melee Tour 319" to "Melee Tour 47" is the obvious move - but
+          tour 47 predates the arena split and is labelled plain "Tour
+          47", so that matched nothing and the box snapped back to 319.
+          The same trap covers every Late War tour, 93 through 200.
+        """
         if value == needle:
             return 0
-        if value.startswith(needle):
+        if wanted is not None and tour_number(value) == wanted:
             return 1
-        return 2
+        if value.startswith(needle):
+            return 2
+        if needle in value:
+            return 3
+        return None
 
     # -- selection -----------------------------------------------------
 
@@ -242,6 +291,23 @@ class SearchableSelect(ctk.CTkFrame):
             self._choose(self._filtered[0])
         else:
             self.commit_typed()
+
+    def _on_focus_in(self, _event) -> None:
+        """Select the whole entry when focus lands in it.
+
+        Deferred to idle because the click that brings focus here is
+        still being handled: Tk's own Entry binding sets the insertion
+        cursor and clears the selection after this runs. A later click
+        inside the box fires no FocusIn, so it still places the cursor
+        normally for anyone who does want to edit in place."""
+        self.after_idle(self._select_all)
+
+    def _select_all(self) -> None:
+        try:
+            self.entry.select_range(0, "end")
+            self.entry.icursor("end")
+        except tk.TclError:  # the entry went away while we waited
+            pass
 
     def _on_focus_out(self, _event) -> None:
         # While the popup is open the focus can land on the listbox;
@@ -264,10 +330,7 @@ class SearchableSelect(ctk.CTkFrame):
             return
         if needle == self._variable.get().casefold():
             return
-        matches = sorted(
-            (v for v in self._values if needle in v.casefold()),
-            key=lambda v: self._match_rank(v.casefold(), needle),
-        )
+        matches = self._ranked(needle)
         if matches:
             self._select(matches[0])
         else:
@@ -277,7 +340,9 @@ class SearchableSelect(ctk.CTkFrame):
         if self._listbox is None:
             return
         selection = self._listbox.curselection()
-        if selection:
+        # The "no matches" row is a message, not a value - clicking it
+        # must not pick anything.
+        if selection and selection[0] < len(self._filtered):
             self._choose(self._filtered[selection[0]])
 
     def _on_global_click(self, event) -> None:

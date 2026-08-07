@@ -8,6 +8,11 @@ checkout.
 The labels below are shaped like the real ones on purpose. "Tour 21"
 being a substring of "Melee Tour 219" is the whole reason the ranking
 exists, and a set of tidy fake values wouldn't exercise it.
+
+The three families are real too: one arena's tour list spans all of
+them, because HiTech's labels changed twice. The Melee arena today holds
+"Melee Tour 319" back to 201, "Late War Tour 200" back to 93, and plain
+"Tour 92" back to 12 - the same career under three names.
 """
 from __future__ import annotations
 
@@ -16,8 +21,9 @@ import unittest
 from tests import gui_fixture
 
 TOUR_LABELS = (
-    ["Melee Tour %d" % n for n in range(318, 92, -1)]  # post-split, newest first
-    + ["Tour %d" % n for n in range(92, 11, -1)]       # pre-split Main Arena
+    ["Melee Tour %d" % n for n in range(319, 200, -1)]     # since the rename
+    + ["Late War Tour %d" % n for n in range(200, 92, -1)]  # 2007 split to rename
+    + ["Tour %d" % n for n in range(92, 11, -1)]            # pre-split Main Arena
 )
 
 _root = None
@@ -70,8 +76,49 @@ class SearchableSelectTests(unittest.TestCase):
         )
 
     def test_order_within_a_tier_stays_newest_first(self):
-        results = [r for r in self._filter("Melee Tour 31") if r != "Melee Tour 31"]
-        self.assertEqual(results, sorted(results, reverse=True))
+        results = [r for r in self._filter("Melee Tour 31") if r.startswith("Melee")]
+        self.assertEqual(results, ["Melee Tour 31%d" % n for n in range(9, -1, -1)])
+
+    # -- matching on the tour number ----------------------------------
+    #
+    # These pin the bug The Fugitive reported against v1.1.1: whatever
+    # you typed, Single Tour sync fetched the newest tour. Both halves of
+    # it come from one arena carrying three families of label - "Melee
+    # Tour 319", "Late War Tour 147", "Tour 47" - so the arena words a
+    # player types rarely match the tour they want. Drop the tour-number
+    # tier out of _match_rank() and every test here fails.
+
+    def test_a_bare_number_finds_that_tour_first(self):
+        """"47" is a substring of Tour 47, Late War Tour 147 and Melee
+        Tour 247. Newest-first order offered 247, so Enter synced it."""
+        results = self._filter("47")
+        self.assertEqual(results[0], "Tour 47")
+        self.assertIn("Melee Tour 247", results, "the others are still on offer")
+
+    def test_a_bare_number_beats_the_same_digits_further_in(self):
+        self.assertEqual(self._filter("92")[0], "Tour 92")
+        self.assertEqual(self._filter("93")[0], "Late War Tour 93")
+        self.assertEqual(self._filter("300")[0], "Melee Tour 300")
+
+    def test_the_wrong_arena_word_still_finds_the_tour(self):
+        """The box starts filled in with "Melee Tour 319", so editing
+        just the number is the obvious move - and for the 189 tours in
+        this arena that HiTech labelled otherwise, it matched nothing."""
+        self.assertEqual(self._filter("Melee Tour 47")[0], "Tour 47")
+        self.assertEqual(self._filter("Melee Tour 147")[0], "Late War Tour 147")
+
+    def test_editing_the_number_in_place_selects_that_tour(self):
+        self.widget._choose("Melee Tour 319")
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Melee Tour 47")
+        self.assertEqual(self.widget.get(), "Tour 47")
+
+    def test_an_exact_label_still_wins_over_its_number(self):
+        """"Tour 21" typed in full is Tour 21, not the 21x range."""
+        self.assertEqual(self._filter("Tour 21")[0], "Tour 21")
+
+    def test_a_number_no_tour_has_matches_nothing(self):
+        self.assertEqual(self._filter("Tour 9999"), [])
 
     def test_a_filter_matching_nothing_yields_nothing(self):
         self.assertEqual(self._filter("Halibut"), [])
@@ -177,6 +224,30 @@ class SearchableSelectTests(unittest.TestCase):
     def test_configure_replaces_the_value_list(self):
         self.widget.configure(values=["Melee Tour 318"])
         self.assertEqual(self._filter("Melee"), ["Melee Tour 318"])
+
+    # -- the box itself -----------------------------------------------
+
+    def test_an_empty_result_says_so_rather_than_showing_nothing(self):
+        from ahstats.picker import NO_MATCH_ROW
+
+        self._filter("Halibut")
+        self.assertEqual(self.widget._listbox.get(0, "end"), (NO_MATCH_ROW,))
+
+    def test_clicking_the_no_match_row_picks_nothing(self):
+        self.widget._choose("Tour 47")
+        self._filter("Halibut")
+        self.widget._listbox.selection_set(0)
+        self.widget._on_pick(None)
+        self.assertEqual(self.widget.get(), "Tour 47")
+
+    def test_arriving_in_the_box_selects_what_is_in_it(self):
+        """So the first keystroke replaces the tour rather than
+        appending to it - typing "47" into a box already reading "Melee
+        Tour 319" was how the wrong tour got synced."""
+        self.widget._choose("Melee Tour 319")
+        self.widget._on_focus_in(None)
+        self.widget.update_idletasks()  # the select-all is deferred to idle
+        self.assertEqual(self.widget.entry.selection_get(), "Melee Tour 319")
 
     def test_reloading_while_open_refilters_in_place(self):
         self.widget.open()

@@ -4,6 +4,42 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.1.2 - Type a tour number, get that tour
+
+v1.1.1 read what you typed into the tour box, but then went looking for it in
+the wrong place, so Single Tour sync could still fetch a tour you never asked
+for. Reported again by **The Fugitive** - thanks for staying on it.
+
+Nothing to re-sync and nothing to delete. Your cache is untouched.
+
+### Fixed
+
+**Typing a tour number finds that tour.** One arena's tour list carries three
+generations of HiTech's own naming: Melee Tour 319 down to 201, Late War Tour
+200 down to 93, and plain Tour 92 down to 12 - all one continuous career. The
+picker was matching your typing as plain text against those labels, which went
+wrong two ways:
+
+- Typing the bare number. "47" appears in Tour 47, Late War Tour 147 and Melee
+  Tour 247, and the newest-first list put Melee Tour 247 at the top - so Enter
+  synced a tour twenty years away from the one you wanted.
+- Editing the number in the box. The box arrives filled in with the current
+  tour, so changing "Melee Tour 319" to "Melee Tour 47" is the natural move -
+  but there is no tour by that name, so it matched nothing and the box snapped
+  straight back to 319. That covered 189 of the 308 tours in the Melee list.
+
+The tour number is now what the picker matches on. Type 47 and you get Tour 47;
+type 93 and you get Late War Tour 93; leave the arena name wrong and it still
+finds the tour. A label typed in full still wins over the tours that merely
+contain those digits, so "Tour 21" is Tour 21, not Tour 210.
+
+**Clicking into the tour box selects what's in it**, so the first thing you type
+replaces the tour rather than being tacked onto the end of it. Click, type the
+number, press Enter. Click a second time if you would rather edit in place.
+
+**A filter matching no tour says so.** The list used to just go empty, which
+looked like the dropdown had broken again.
+
 ## v1.1.1 - Single Tour sync actually picks the tour
 
 The type-to-filter tour pickers that arrived in v1.1.0 had two ways of not
