@@ -300,6 +300,80 @@ class TtkStyleTests(unittest.TestCase):
                 self.assertEqual(style.lookup("Treeview", option), theme.BORDER_GRAY)
 
 
+# The aircraft the model picker on Kills by Plane holds, in the order
+# db.get_matrix_planes() returns them. Real names from a real career -
+# the Zero sits third, which is exactly where a clipped Tk menu loses
+# it, and M-3 and Ju 87D-3 are here because their trailing digits are
+# what the tour-number ranking would latch onto.
+PLANE_NAMES = [
+    "A-20G", "A6M2", "A6M3", "A6M5b", "Bf 109G-14", "Bf 109K-4",
+    "Fw 190A-8", "Fw 190D-9", "Ju 87D-3", "Ki-84-Ia", "M-3", "M-8",
+    "P-38L", "P-51D", "Spitfire Mk IX", "Yak-9U",
+]
+
+
+class PlanePickerTests(unittest.TestCase):
+    """The model picker is the same widget with the tour smarts off.
+
+    It went in for a player report against v1.1.3: the A6M3 was missing
+    from the by-model list. It was in the database the whole time - a
+    hundred and twenty-odd aircraft make a Tk option menu 2415 pixels
+    tall on a 1440-pixel screen, and the entries that fall off the top
+    are the As.
+    """
+
+    def setUp(self):
+        from ahstats.picker import SearchableSelect
+
+        self.widget = SearchableSelect(
+            _root, values=PLANE_NAMES, match_numbers=False,
+            no_match_text="(no aircraft matches that)",
+        )
+
+    def tearDown(self):
+        self.widget.close()
+        self.widget.destroy()
+
+    def _filter(self, text: str) -> list[str]:
+        self.widget.open()
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, text)
+        self.widget._refilter()
+        return self.widget._filtered
+
+    def test_every_aircraft_is_reachable(self):
+        """The whole point: nothing is clipped off the list."""
+        self.widget.open()
+        self.widget._refilter()
+        self.assertEqual(self.widget._filtered, PLANE_NAMES)
+
+    def test_the_zero_is_there(self):
+        self.assertIn("A6M3", self._filter("A6M"))
+
+    def test_typing_an_aircraft_selects_it(self):
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "A6M3")
+        self.assertEqual(self.widget.get(), "A6M3")
+
+    def test_a_model_number_is_not_a_tour_number(self):
+        """Trailing digits mean a tour on a tour label and a mark on an
+        aircraft. Drop match_numbers=False and "A6M3" also offers the
+        Ju 87D-3 and the M-3 halftrack, because they end in a 3."""
+        self.assertEqual(self._filter("A6M3"), ["A6M3"])
+        self.assertEqual(self._filter("109"), ["Bf 109G-14", "Bf 109K-4"])
+
+    def test_a_partial_name_still_narrows(self):
+        self.assertEqual(self._filter("Fw 190"), ["Fw 190A-8", "Fw 190D-9"])
+
+    def test_nothing_matching_says_so_in_aircraft_terms(self):
+        self.widget.open()
+        self.widget.entry.delete(0, "end")
+        self.widget.entry.insert(0, "Halibut")
+        self.widget._refilter()
+        self.assertEqual(self.widget._filtered, [])
+        self.assertEqual(self.widget._listbox.get(0), "(no aircraft matches that)")
+
+
 if __name__ == "__main__":
     unittest.main()
 

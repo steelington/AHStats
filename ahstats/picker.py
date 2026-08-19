@@ -7,6 +7,12 @@ menu that long as a column with a scroll arrow at each end: no
 scrollbar, no mouse wheel, and no way to get from Tour 300 to Tour 12
 except by holding the mouse still on an arrow. This replaces it.
 
+The Kills-by-Plane model picker has the same problem for the same
+reason: a long career meets a hundred and twenty-odd aircraft, which is
+a menu twenty-four hundred pixels tall. Tk clips that to the screen and
+the entries that fall off the top - the As, so the Zeroes - simply are
+not there to click.
+
 Typing filters the list; the wheel and the scrollbar both work, because
 the popup is a plain Tk Listbox rather than a menu.
 """
@@ -49,11 +55,19 @@ class SearchableSelect(ctk.CTkFrame):
     (values=...)` - so swapping one for the other is a one-line change
     at each call site."""
 
-    def __init__(self, parent, variable=None, values=(), width=200, command=None, placeholder="", **kwargs):
+    def __init__(self, parent, variable=None, values=(), width=200, command=None, placeholder="",
+                 match_numbers: bool = True, no_match_text: str = NO_MATCH_ROW, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         self._variable = variable if variable is not None else ctk.StringVar()
         self._values = list(values)
         self._command = command
+        # Tour labels end in the number players think in; aircraft names
+        # end in a mark or a model number that means nothing across
+        # aircraft. Ranking "A6M3" against everything ending in 3 puts
+        # the M-3 halftrack above the Zero, so plane pickers turn this
+        # off. See _match_rank.
+        self._match_numbers = match_numbers
+        self._no_match_text = no_match_text
         self._popup: tk.Toplevel | None = None
         self._listbox: tk.Listbox | None = None
         self._filtered: list[str] = []
@@ -228,7 +242,7 @@ class SearchableSelect(ctk.CTkFrame):
         for value in self._filtered:
             self._listbox.insert("end", value)
         if not self._filtered:
-            self._listbox.insert("end", NO_MATCH_ROW)
+            self._listbox.insert("end", self._no_match_text)
         if select_current and current in self._filtered:
             index = self._filtered.index(current)
             self._listbox.selection_set(index)
@@ -239,7 +253,7 @@ class SearchableSelect(ctk.CTkFrame):
 
         `needle` must already be casefolded. Sorting is stable, so within
         a tier the list keeps its newest-first order."""
-        wanted = tour_number(needle)
+        wanted = tour_number(needle) if self._match_numbers else None
         scored = []
         for value in self._values:
             rank = self._match_rank(value.casefold(), needle, wanted)

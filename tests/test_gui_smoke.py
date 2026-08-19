@@ -281,6 +281,23 @@ class PilotSmokeTests:
         self.assertEqual(self.app.planes_grid.columns[0], "Tour")
         self.assertIn("Kills/Death", self.app.planes_grid.columns)
 
+    def test_model_picker_offers_every_plane_in_the_cache(self):
+        """The A6M3 report: an aircraft in the database has to be in the
+        picker. A Tk option menu of this length is taller than the screen
+        and silently drops the entries that don't fit."""
+        planes = self.db.get_matrix_planes(self.PILOT, arena=ARENA)
+        if not planes:
+            self.skipTest("no plane matrix cached - run the backfill")
+
+        self.app.planes_scope_var.set("By Model")
+        self.app.on_planes_scope_changed()
+        self.app.planes_model_dropdown.open()
+        self.app.planes_model_dropdown._refilter()
+        try:
+            self.assertEqual(self.app.planes_model_dropdown._filtered, planes)
+        finally:
+            self.app.planes_model_dropdown.close()
+
     def test_switching_scope_restores_plane_columns(self):
         """By Model swaps the columns out; going back must restore them."""
         self.app.planes_scope_var.set("By Model")

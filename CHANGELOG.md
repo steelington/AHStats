@@ -4,6 +4,33 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.1.4 - The whole aircraft list, and a wheel that works
+
+The **Model** picker on Kills by Plane now filters as you type and scrolls
+with the mouse wheel. Both reported by **Shane** - thanks for the catch, and
+for spotting it precisely enough to find the cause.
+
+Nothing to re-sync and nothing to delete.
+
+### Fixed
+
+**Aircraft were missing from the "By Model" list.** The A6M3 among them, and
+anything else near the top of the alphabet. The data was in your cache the
+whole time - the list itself was the problem. A long career meets around a
+hundred and thirty aircraft, and Windows draws a menu that long taller than
+the screen, then quietly cuts off whatever doesn't fit.
+
+The picker is now the same type-to-filter box as the tour pickers: type
+"A6M" and you get the three Zeroes, type "109" and you get every Messerschmitt.
+
+### Changed
+
+**The Model list scrolls with the mouse wheel** and has a real scrollbar,
+instead of the hold-the-pointer-on-an-arrow menu it had before.
+
+*The 109G-10 rolling into the 109K-4 is HiTech's own doing, not ours - AHStats
+shows the aircraft names exactly as the stats pages report them.*
+
 ## v1.1.3 - Scrollbars and grid borders that match the rest of the app
 
 Cosmetic only. Nothing to re-sync, nothing to delete, and nothing behaves

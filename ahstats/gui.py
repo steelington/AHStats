@@ -727,9 +727,14 @@ class App(ctk.CTk):
 
         self.planes_model_label = ctk.CTkLabel(top, text="Model:")
         self.planes_model_var = ctk.StringVar()
-        self.planes_model_dropdown = ctk.CTkOptionMenu(
-            top, variable=self.planes_model_var, values=[""], width=160,
+        # A career meets a hundred and twenty-odd aircraft, and a Tk
+        # option menu that long is taller than the screen: it clips, and
+        # the entries that fall off the top are unclickable. That is how
+        # the A6M3 went missing. SearchableSelect scrolls and filters.
+        self.planes_model_dropdown = SearchableSelect(
+            top, variable=self.planes_model_var, values=[], width=170,
             command=lambda _=None: self.refresh_planes(),
+            match_numbers=False, no_match_text="(no aircraft matches that)",
         )
 
         ctk.CTkButton(
@@ -1529,7 +1534,7 @@ class App(ctk.CTk):
     def _refresh_model_dropdown(self):
         gameid = self._effective_gameid()
         planes = self.db.get_matrix_planes(gameid, arena=self._selected_arena()) if gameid else []
-        self.planes_model_dropdown.configure(values=planes or [""])
+        self.planes_model_dropdown.configure(values=planes)
         if planes and self.planes_model_var.get() not in planes:
             self.planes_model_var.set(planes[0])
         elif not planes:
@@ -1590,7 +1595,9 @@ class App(ctk.CTk):
 
     def _refresh_planes_by_model(self, gameid):
         arena = self._selected_arena()
-        plane = self.planes_model_var.get()
+        # Read the picker, not its variable: an aircraft typed into the
+        # box but never clicked in the list is still a choice.
+        plane = self.planes_model_dropdown.get()
         self.planes_grid.set_columns(self._MODEL_COLUMNS, wide=self._WIDE_COLUMNS)
         if not plane:
             self.planes_status_label.configure(
