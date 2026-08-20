@@ -1301,8 +1301,7 @@ class App(ctk.CTk):
                         text=f"Backfill complete - filled {item[1]} tour(s)",
                         text_color=theme.ACCENT_OLIVE,
                     )
-                    self._refresh_model_dropdown()
-                    self.refresh_planes()
+                    self.refresh_planes()  # reloads the model list too
                 elif tag == "BACKFILL_ERROR":
                     self.backfill_btn.configure(state="normal")
                     self.stop_btn.configure(state="disabled")
@@ -1525,13 +1524,19 @@ class App(ctk.CTk):
         if by_model:
             self.planes_model_label.pack(side="left", padx=(12, 4))
             self.planes_model_dropdown.pack(side="left", padx=4)
-            self._refresh_model_dropdown()
         else:
             self.planes_model_label.pack_forget()
             self.planes_model_dropdown.pack_forget()
         self.refresh_planes()
 
     def _refresh_model_dropdown(self):
+        """Reload the aircraft list for the pilot and arena in view.
+
+        Called from refresh_planes rather than only when the scope
+        changes: the list is per pilot and per arena, so switching
+        either used to leave the previous selection's aircraft in the
+        box - a Melee list still showing after a switch to All, and the
+        aircraft that only the other arena flew missing from it."""
         gameid = self._effective_gameid()
         planes = self.db.get_matrix_planes(gameid, arena=self._selected_arena()) if gameid else []
         self.planes_model_dropdown.configure(values=planes)
@@ -1556,6 +1561,7 @@ class App(ctk.CTk):
             return
 
         if scope == "By Model":
+            self._refresh_model_dropdown()
             self._refresh_planes_by_model(gameid)
             return
 

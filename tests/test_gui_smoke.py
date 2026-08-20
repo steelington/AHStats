@@ -298,6 +298,28 @@ class PilotSmokeTests:
         finally:
             self.app.planes_model_dropdown.close()
 
+    def test_the_model_list_follows_the_arena(self):
+        """The aircraft list is per pilot and per arena. It used to be
+        reloaded only when the scope changed, so switching arena left
+        the previous arena's aircraft in the box - and any aircraft
+        flown only in the new one was missing from it."""
+        scoped = self.db.get_matrix_planes(self.PILOT, arena=ARENA)
+        everything = self.db.get_matrix_planes(self.PILOT, arena="")
+        if not scoped:
+            self.skipTest("no plane matrix cached - run the backfill")
+        # For a pilot who only ever flew one arena the two lists are the
+        # same and the second assertion is a tautology; the other pilot
+        # this class runs against is the one that pins the bug.
+
+        self.app.arena_var.set(ARENA)
+        self.app.planes_scope_var.set("By Model")
+        self.app.on_planes_scope_changed()
+        self.assertEqual(self.app.planes_model_dropdown._values, scoped)
+
+        self.app.arena_var.set("All")
+        self.app.on_arena_changed()
+        self.assertEqual(self.app.planes_model_dropdown._values, everything)
+
     def test_switching_scope_restores_plane_columns(self):
         """By Model swaps the columns out; going back must restore them."""
         self.app.planes_scope_var.set("By Model")

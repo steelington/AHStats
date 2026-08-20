@@ -137,6 +137,55 @@ class SearchableSelectTests(unittest.TestCase):
         self.widget.close()
         self.assertIsNone(self.widget._popup)
 
+    def test_the_popup_is_placed_before_it_is_ever_shown(self):
+        """A new Toplevel starts at the screen's top-left corner, and
+        _place_popup calls update_idletasks - which maps it there -
+        before it sets the geometry. That flashed a dropdown in the
+        corner of the screen on every open. Pinned by checking the
+        popup is still withdrawn when placement begins."""
+        from ahstats.picker import SearchableSelect
+
+        seen = []
+        original = SearchableSelect._place_popup
+
+        def spy(widget):
+            seen.append(widget._popup.wm_state())
+            return original(widget)
+
+        self.widget.pack()  # an unmapped widget's popup never maps either
+        self.widget.update()
+        SearchableSelect._place_popup = spy
+        try:
+            self.widget.open()
+        finally:
+            SearchableSelect._place_popup = original
+        self.assertEqual(seen, ["withdrawn"], "the popup was on screen before it was placed")
+        # And placement did run, so the withdraw is a delay and not a
+        # dropdown that never appears. (Whether Tk then maps it depends
+        # on the master being on screen, which it isn't under pytest.)
+        self.assertTrue(
+            self.widget._popup.wm_geometry().endswith(
+                "+%d+%d" % (self.widget.winfo_rootx(),
+                            self.widget.winfo_rooty() + self.widget.winfo_height())),
+            "the popup should sit directly under the entry",
+        )
+
+    def test_a_popup_destroyed_behind_our_back_does_not_wedge_the_box(self):
+        """Losing the popup without going through close() used to leave
+        a dead handle in _popup, and that handle locked the widget: open()
+        refused to build a second one and _show_variable refused to touch
+        the entry, so the box sat on one value with no list."""
+        self.widget.open()
+        self.widget._popup.destroy()  # gone, but _popup still points at it
+
+        self.widget.open()
+        self.assertIsNotNone(self.widget._popup)
+        self.assertTrue(self.widget._popup.winfo_exists())
+
+        self.widget.close()
+        self.widget.set("Tour 47")
+        self.assertEqual(self.widget.entry.get(), "Tour 47", "the entry must follow the value again")
+
     def test_opening_with_no_values_is_harmless(self):
         from ahstats.picker import SearchableSelect
 

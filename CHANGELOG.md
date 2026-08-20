@@ -4,6 +4,32 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.1.5 - The Model box opens where you clicked
+
+A follow-up to v1.1.4, reported by **Shane** again: the new **Model** picker
+on Kills by Plane could flash something in the top-left corner of the screen
+and then leave the box sitting on the A-20G with no list to choose from.
+
+Nothing to re-sync and nothing to delete.
+
+### Fixed
+
+**The Model list appeared in the corner of the screen instead of under the
+box.** The list was being put on screen for an instant before it was moved
+into place, so what you saw was a flicker in the top-left corner of the
+monitor - and depending on where the window sat, sometimes that flicker was
+all you got. It now stays hidden until it is where it belongs.
+
+**The Model box could get stuck on one aircraft.** If the list ever
+disappeared without the app noticing, the box would refuse to open a new one
+and refuse to change what it showed - locked on whichever aircraft was first
+in the list, usually the A-20G. It now notices and recovers.
+
+**The Model list follows the arena.** Switching arena, or pilot, left the
+previous list in the box: aircraft you never flew there were still offered,
+and aircraft you only flew in the new arena were missing. Switch to All now
+and the WWI aircraft appear where they should.
+
 ## v1.1.4 - The whole aircraft list, and a wheel that works
 
 The **Model** picker on Kills by Plane now filters as you type and scrolls

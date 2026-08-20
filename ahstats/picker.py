@@ -145,10 +145,24 @@ class SearchableSelect(ctk.CTkFrame):
         self.close() if self._popup is not None else self.open()
 
     def open(self) -> None:
+        # A popup destroyed behind our back - the window closing under
+        # it, say - would otherwise leave a dead handle here and wedge
+        # the widget shut: open() would decline to build a second one
+        # and _show_variable would decline to touch the entry, so the
+        # box would sit on one value with no list, forever.
+        if self._popup is not None and not self._popup.winfo_exists():
+            self._popup = None
+            self._listbox = None
         if self._popup is not None or not self._values:
             return
 
         self._popup = tk.Toplevel(self)
+        # Withdrawn until _place_popup has put it where it belongs. A
+        # fresh Toplevel starts life at the screen's top-left corner,
+        # and building the list runs update_idletasks, which maps it
+        # there - so without this the dropdown flashes in the corner of
+        # the screen before jumping under the entry.
+        self._popup.wm_withdraw()
         self._popup.wm_overrideredirect(True)  # no title bar - this is a dropdown, not a window
         self._popup.configure(bg=theme.BORDER_GRAY)
         self._popup.transient(self.winfo_toplevel())
@@ -189,13 +203,17 @@ class SearchableSelect(ctk.CTkFrame):
         for callers that are about to resolve that text themselves."""
         if self._popup is None:
             return
+        # Drop our handles first, so a failure below still leaves the
+        # widget usable rather than permanently half-open.
+        popup, self._popup, self._listbox = self._popup, None, None
         try:
-            self.winfo_toplevel().unbind("<Button-1>", self._click_binding)
+            self.winfo_toplevel().unbind("<Button-1>", getattr(self, "_click_binding", None))
         except tk.TclError:
             pass
-        self._popup.destroy()
-        self._popup = None
-        self._listbox = None
+        try:
+            popup.destroy()
+        except tk.TclError:  # already gone
+            pass
         if not keep_typed:
             self._show_variable()
 
@@ -215,6 +233,10 @@ class SearchableSelect(ctk.CTkFrame):
         if y + height > self.winfo_screenheight():
             y = max(0, self.winfo_rooty() - height)
         self._popup.wm_geometry(f"{width}x{height}+{x}+{y}")
+        # Now, and not before, it is fit to be seen. Harmless on the
+        # refilter path, where it is already up.
+        self._popup.wm_deiconify()
+        self._popup.lift()
 
     # -- filtering -----------------------------------------------------
 
