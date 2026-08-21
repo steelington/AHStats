@@ -4,6 +4,35 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.2.0 - A light theme, and it tells you when there's an update
+
+Two things people asked for: the app now tells you when there is a newer
+version, and it comes in a light colour scheme as well as the dark one.
+
+Nothing to re-sync and nothing to delete.
+
+### New
+
+**It tells you when there's an update.** On startup the app asks GitHub
+whether a newer version has been released. If there is one, a green
+**Update available** button appears in the top right - click it and the
+release page opens in your browser, where the exe is attached. If there
+isn't, you see nothing at all.
+
+To be clear about what that does and doesn't do: it asks GitHub one
+question and reads the answer. Nothing about you, your pilot, your
+scores or your machine is sent, nothing is recorded anywhere, and the
+app never downloads or installs anything by itself - updating stays a
+thing you do, by hand, when you feel like it. If you're offline, or
+GitHub is having a bad day, the check gives up quietly and the app
+carries on as normal.
+
+**Light theme.** There's a **Dark / Light** switch in the top right, next
+to where the update notice appears. It changes the whole app on the
+spot - grids, graphs, dropdowns and all - with no restart, and it
+remembers which one you picked for next time. The olive masthead stays
+olive in both, because that's the app.
+
 ## v1.1.5 - The Model box opens where you clicked
 
 A follow-up to v1.1.4, reported by **Shane** again: the new **Model** picker

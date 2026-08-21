@@ -50,7 +50,7 @@ class TrendChart(tk.Canvas):
 
     def __init__(self, parent, height=380, **kwargs):
         super().__init__(
-            parent, height=height, bg=theme.PANEL_BG,
+            parent, height=height, bg=theme.color(theme.PANEL_BG),
             highlightthickness=0, bd=0, **kwargs
         )
         self._points: list[tuple[float, float]] = []
@@ -58,6 +58,17 @@ class TrendChart(tk.Canvas):
         self._ylabel = ""
         self._message = "Pick a graph to plot."
         self.bind("<Configure>", lambda _e: self._redraw())
+        # A Canvas takes flat colors, so nothing on it follows a
+        # light/dark switch by itself - repaint on the way through.
+        theme.on_mode_change(self._apply_mode)
+
+    def _apply_mode(self) -> None:
+        """Re-colour and re-draw for the current appearance mode.
+
+        Raises if the chart has been destroyed, which is how theme drops
+        a dead listener - see theme.on_mode_change."""
+        self.configure(bg=theme.color(theme.PANEL_BG))
+        self._redraw()
 
     def plot(self, points, title="", ylabel="", message="") -> None:
         """points: (x, y) pairs, x ascending. Pass message instead to show
@@ -79,7 +90,7 @@ class TrendChart(tk.Canvas):
 
         if self._title:
             self.create_text(
-                width / 2, 14, text=self._title, fill=theme.TEXT_HEADING,
+                width / 2, 14, text=self._title, fill=theme.color(theme.TEXT_HEADING),
                 font=("Segoe UI", 12, "bold"),
             )
 
@@ -87,7 +98,7 @@ class TrendChart(tk.Canvas):
             self.create_text(
                 width / 2, height / 2,
                 text=self._message or "No data for this selection.",
-                fill=theme.TEXT_BODY, font=("Segoe UI", 11),
+                fill=theme.color(theme.TEXT_BODY), font=("Segoe UI", 11),
             )
             return
 
@@ -120,16 +131,16 @@ class TrendChart(tk.Canvas):
             if tick >= y_min - step / 2:
                 y = sy(tick)
                 if top - 1 <= y <= bottom + 1:
-                    self.create_line(left, y, right, y, fill=theme.BORDER_GRAY)
+                    self.create_line(left, y, right, y, fill=theme.color(theme.BORDER_GRAY))
                     self.create_text(
                         left - 6, y, text=_format_tick(tick), anchor="e",
-                        fill=theme.TEXT_BODY, font=("Segoe UI", 9),
+                        fill=theme.color(theme.TEXT_BODY), font=("Segoe UI", 9),
                     )
             tick += step
 
         # Axes
-        self.create_line(left, top, left, bottom, fill=theme.TEXT_BODY)
-        self.create_line(left, bottom, right, bottom, fill=theme.TEXT_BODY)
+        self.create_line(left, top, left, bottom, fill=theme.color(theme.TEXT_BODY))
+        self.create_line(left, bottom, right, bottom, fill=theme.color(theme.TEXT_BODY))
 
         # X tick labels - a handful of tour numbers, evenly spaced
         label_count = max(2, min(10, len(self._points)))
@@ -142,16 +153,16 @@ class TrendChart(tk.Canvas):
             seen.add(x_value)
             self.create_text(
                 sx(x_value), bottom + 8, text=f"{x_value:.0f}", anchor="n",
-                fill=theme.TEXT_BODY, font=("Segoe UI", 9),
+                fill=theme.color(theme.TEXT_BODY), font=("Segoe UI", 9),
             )
         self.create_text(
             (left + right) / 2, height - 6, text="Tour", anchor="s",
-            fill=theme.TEXT_BODY, font=("Segoe UI", 9),
+            fill=theme.color(theme.TEXT_BODY), font=("Segoe UI", 9),
         )
         if self._ylabel:
             self.create_text(
                 12, (top + bottom) / 2, text=self._ylabel, angle=90,
-                fill=theme.TEXT_BODY, font=("Segoe UI", 9),
+                fill=theme.color(theme.TEXT_BODY), font=("Segoe UI", 9),
             )
 
         # The series itself
@@ -159,7 +170,7 @@ class TrendChart(tk.Canvas):
         for x, y in self._points:
             coords.extend((sx(x), sy(y)))
         if len(coords) >= 4:
-            self.create_line(*coords, fill=theme.ACCENT_GREEN, width=2, smooth=False)
+            self.create_line(*coords, fill=theme.color(theme.ACCENT_GREEN), width=2, smooth=False)
 
         # Markers, but only when they won't turn into a solid bar
         if len(self._points) <= 120:
@@ -167,5 +178,5 @@ class TrendChart(tk.Canvas):
                 px, py = sx(x), sy(y)
                 self.create_oval(
                     px - 2.5, py - 2.5, px + 2.5, py + 2.5,
-                    fill=theme.ACCENT_GREEN, outline=theme.BG_DARK,
+                    fill=theme.color(theme.ACCENT_GREEN), outline=theme.color(theme.BG_DARK),
                 )

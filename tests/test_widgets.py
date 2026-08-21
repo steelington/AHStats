@@ -307,6 +307,9 @@ class SearchableSelectTests(unittest.TestCase):
 class TtkStyleTests(unittest.TestCase):
     """The dropdown and every grid share one ttk scrollbar style.
 
+    Colors are (light, dark) pairs now, so these resolve through
+    theme.color() for whichever mode the shared test window is in.
+
     theme.py styled "Vertical.TScrollbar" and "Horizontal.TScrollbar"
     only, which are names no widget uses: a ttk.Scrollbar keeps the bare
     class name as its style and picks its layout by orientation. So the
@@ -320,9 +323,9 @@ class TtkStyleTests(unittest.TestCase):
         from ahstats import theme
 
         style = ttk.Style(_root)
-        self.assertEqual(style.lookup("TScrollbar", "troughcolor"), theme.BG_DARK)
-        self.assertEqual(style.lookup("TScrollbar", "background"), theme.BORDER_GRAY)
-        self.assertEqual(style.lookup("TScrollbar", "arrowcolor"), theme.TEXT_BODY)
+        self.assertEqual(style.lookup("TScrollbar", "troughcolor"), theme.color(theme.BG_DARK))
+        self.assertEqual(style.lookup("TScrollbar", "background"), theme.color(theme.BORDER_GRAY))
+        self.assertEqual(style.lookup("TScrollbar", "arrowcolor"), theme.color(theme.TEXT_BODY))
 
     def test_the_bevel_colors_are_dark_too(self):
         """Left at clam's defaults these outline the thumb and both
@@ -334,7 +337,7 @@ class TtkStyleTests(unittest.TestCase):
         style = ttk.Style(_root)
         for option in ("lightcolor", "darkcolor", "bordercolor"):
             with self.subTest(option=option):
-                self.assertEqual(style.lookup("TScrollbar", option), theme.BG_DARK)
+                self.assertEqual(style.lookup("TScrollbar", option), theme.color(theme.BG_DARK))
 
     def test_the_grids_are_not_framed_in_white(self):
         """Same clam bevel, same near-white frame - borderwidth=0 does
@@ -346,7 +349,7 @@ class TtkStyleTests(unittest.TestCase):
         style = ttk.Style(_root)
         for option in ("lightcolor", "darkcolor", "bordercolor"):
             with self.subTest(option=option):
-                self.assertEqual(style.lookup("Treeview", option), theme.BORDER_GRAY)
+                self.assertEqual(style.lookup("Treeview", option), theme.color(theme.BORDER_GRAY))
 
 
 # The aircraft the model picker on Kills by Plane holds, in the order

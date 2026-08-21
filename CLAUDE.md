@@ -30,7 +30,7 @@ Tests run with pytest (`python -m pytest tests/ -q`), which is not in
 
 ### Core Module Organization
 
-**ahstats/** contains 13 modules (~4,900 lines total). Line counts below are
+**ahstats/** contains 15 modules (~5,100 lines total). Line counts below are
 approximate and drift; don't trust them for anything but a sense of scale.
 
 1. **gui.py** (~1,800 lines) - Main application window with 7 tabs:
@@ -102,7 +102,20 @@ approximate and drift; don't trust them for anything but a sense of scale.
 
 12. **logger.py** (~35 lines) - Centralized logging to `ahstats.log`
 
-13. **__init__.py** - `__version__`, the single source of truth for the version
+13. **version_check.py** (~140 lines) - Asks GitHub whether a newer release
+    exists. One anonymous GET to the public releases API of
+    `steelington/AHStats`; no telemetry, nothing collected, nothing
+    downloaded. Every failure - offline, rate-limited, odd tag - resolves
+    to "no update" silently. `gui.App` starts it on a daemon thread at
+    launch and shows a masthead badge if something newer turns up.
+
+14. **settings.py** (~60 lines) - A tiny JSON key/value store in the app
+    data dir for UI preferences (currently just `appearance_mode`).
+    Deliberately not the database: it has to be readable before the app
+    has decided anything, and a corrupt file must be a shrug, not a
+    crash.
+
+15. **__init__.py** - `__version__`, the single source of truth for the version
     shown in the window title and masthead. Bump it in the same commit that
     tags a release.
 
@@ -208,13 +221,15 @@ Client enforces 3+ second delay between requests to avoid IP blocking:
 python -m pytest tests/ -q
 ```
 
-Baseline: 140 passed, 581 subtests passed, **0 skipped**.
+Baseline: 204 passed, 689 subtests passed, **0 skipped**.
 
 | File | Needs a window? | Needs cached data? | Covers |
 |---|---|---|---|
 | `test_parser.py` | no | no (fixtures) | the five HTML parsers |
 | `test_tours.py` | no | no | arena/era classification, `reclassify_arenas()`, tour-range narrowing |
 | `test_identity_groups.py` | no | no | `parse_identity_ids()`, group storage, multi-ID queries |
+| `test_version_check.py` | badge class only | no | version parsing/compare, the background check, the masthead badge |
+| `test_theme.py` | switch class only | no | the (light, dark) palette, the theme JSON, settings, live mode switching |
 | `test_widgets.py` | yes | no | `SearchableSelect` filtering, ranking, popup |
 | `test_gui_smoke.py` | yes | yes | the real window against the local cache, per pilot |
 
@@ -262,7 +277,35 @@ UI colors defined in:
 - `ahstats/assets/htc_theme.json` - customtkinter theme config
 - `ahstats/theme.py` - Python color constants + ttk.Treeview styling
 
-To modify appearance, edit these files and restart the app.
+### Light and dark (non-obvious)
+
+**Every color in `theme.py` is a `(light, dark)` pair**, and every color
+in the theme JSON is a two-element list. That is customtkinter's own
+convention: a CTk widget handed a two-tuple picks the right half for the
+current appearance mode and re-picks it live when the mode changes. So
+the CTk half of the app follows the Dark/Light picker in the masthead for
+free, and a bare color string anywhere is a bug - it silently shows the
+same shade in both modes.
+
+Nothing else follows automatically. `tkinter.Canvas` (chart.py),
+`tkinter.Listbox` (picker.py) and every ttk style take one flat string,
+so they must resolve pairs with `theme.color(...)` **at draw time** and
+re-draw on a switch. `theme.set_mode()` re-runs `style_treeview()` and
+then calls back everything registered via `theme.on_mode_change()` -
+which `GridView` and `TrendChart` do in their constructors. A listener
+that raises is dropped, since by then its widget is usually destroyed.
+
+One trap the segmented button sets: it uses a single `text_color` for
+selected *and* unselected chips. That is why the light theme's selected
+chip is pale olive rather than deep olive - dark text has to stay legible
+on both. Buttons that override `fg_color` to a panel shade also need an
+explicit `text_color=theme.TEXT_BODY`; the palette default is cream, for
+olive buttons.
+
+The choice is saved by `settings.py` and applied by
+`gui.py`'s `ctk.set_appearance_mode(settings.get("appearance_mode"))`
+before any widget is built, so the app never flashes dark on its way to
+light. `tests/test_theme.py` covers all of this.
 
 ## Key Constraints
 

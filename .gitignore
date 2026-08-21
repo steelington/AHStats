@@ -88,3 +88,7 @@ NOTES.txt
 Steely.png
 spatula.png
 netconxsettings.xml
+
+# UI preferences written next to the code when running from source
+# (packaged builds keep this in %LOCALAPPDATA%).
+settings.json

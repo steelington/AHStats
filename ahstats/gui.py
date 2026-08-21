@@ -4,12 +4,13 @@ from __future__ import annotations
 import queue
 import threading
 import time
+import webbrowser
 from tkinter import filedialog, messagebox, ttk
 
 import customtkinter as ctk
 from PIL import Image
 
-from ahstats import __version__, export, sync, theme
+from ahstats import __version__, export, settings, sync, theme, version_check
 from ahstats import grid as gridmod
 from ahstats.client import AhScoreClient
 from ahstats.chart import TrendChart
@@ -25,7 +26,9 @@ from ahstats.db import (
     tour_number,
 )
 
-ctk.set_appearance_mode("dark")
+# The saved preference decides the mode before a single widget is
+# built, so the app never flashes dark on its way to light.
+ctk.set_appearance_mode(settings.get("appearance_mode"))
 ctk.set_default_color_theme(str(theme.THEME_JSON_PATH))
 
 ARENA_PICKER_VALUES = ARENA_CHOICES + ["All"]
@@ -85,6 +88,8 @@ class App(ctk.CTk):
         self.refresh_tour_dropdown()
         self._poll_queue()  # reschedules itself, storing _poll_after_id
         self._startup_after_id = self.after(500, self._check_incomplete_syncs)
+        self._latest_release = None
+        version_check.check_in_background(self._on_update_available)
 
     def destroy(self):
         """Cancel pending timers before tearing the window down."""
@@ -133,6 +138,74 @@ class App(ctk.CTk):
             text_color=theme.TEXT_BODY, font=ctk.CTkFont(size=11),
         ).pack(anchor="w")
 
+        # The update notice lives here, packed only if a check finds
+        # something newer. Built empty so the masthead layout is
+        # settled before any answer comes back off the network.
+        # Light/Dark is a segmented button rather than a checkbox: the
+        # two modes are peers, and the control says which one is on
+        # without the user having to work out what "dark mode: off"
+        # leaves them with.
+        self.appearance_picker = ctk.CTkSegmentedButton(
+            masthead, values=list(theme.MODES), command=self.on_appearance_changed,
+            width=140, font=ctk.CTkFont(size=11, weight="bold"),
+            selected_color=theme.ACCENT_GREEN, selected_hover_color=theme.ACCENT_GREEN_HOVER,
+            unselected_color=theme.ACCENT_OLIVE, unselected_hover_color=theme.ACCENT_OLIVE_HOVER,
+            text_color=theme.TEXT_CREAM,
+        )
+        self.appearance_picker.set(theme.get_mode())
+        self.appearance_picker.pack(side="right", padx=(0, 14), pady=8)
+
+        self.update_button = ctk.CTkButton(
+            masthead, text="", width=0, command=self._open_release_page,
+            fg_color=theme.ACCENT_GREEN, hover_color=theme.ACCENT_GREEN_HOVER,
+            text_color=theme.TEXT_HEADING, font=ctk.CTkFont(size=12, weight="bold"),
+        )
+
+    # ---------------- appearance ----------------
+
+    def on_appearance_changed(self, mode: str) -> None:
+        """Switch light/dark and remember the choice.
+
+        theme.set_mode restyles ttk and calls back the grids and charts;
+        the CTk widgets recolor themselves from their (light, dark)
+        pairs. Nothing is rebuilt and no restart is needed.
+        """
+        theme.set_mode(mode)
+        settings.save(appearance_mode=theme.get_mode())
+
+    # ---------------- update notice ----------------
+
+    def _on_update_available(self, release):
+        """Called from the update-check thread - bounce to the GUI thread.
+
+        Wrapped because the window may already be closing when the
+        answer lands; `after` on a dead interpreter raises.
+        """
+        try:
+            self.after(0, self._show_update_notice, release)
+        except Exception:  # window gone
+            pass
+
+    def _show_update_notice(self, release):
+        """Put a clickable badge in the masthead. Never a modal - a popup
+        in front of the app on launch is a worse greeting than a button
+        the user can ignore forever."""
+        if not self.winfo_exists():
+            return
+        self._latest_release = release
+        self.update_button.configure(text=f"Update available: v{release.version}")
+        self.update_button.pack(side="right", padx=14, pady=8)
+
+    def _open_release_page(self):
+        """Open the release page in the browser. The app downloads and
+        installs nothing itself."""
+        release = getattr(self, "_latest_release", None)
+        url = release.url if release else version_check.RELEASES_PAGE
+        try:
+            webbrowser.open(url)
+        except Exception:  # no browser configured; nothing useful to do
+            pass
+
     def _build_top_bar(self):
         self._build_masthead()
 
@@ -168,7 +241,7 @@ class App(ctk.CTk):
         self.identity_view_dropdown.pack(side="left", padx=4)
         ctk.CTkButton(
             identity_row, text="Manage Groups...", command=self.on_manage_groups_clicked,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, width=130,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY, width=130,
         ).pack(side="left", padx=4)
 
         # Sync mode selector
@@ -190,7 +263,7 @@ class App(ctk.CTk):
         )
         self.fetch_tours_btn = ctk.CTkButton(
             sync_mode_row, text="Fetch Tours", command=self.on_fetch_tours_clicked,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, width=100
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY, width=100
         )
 
         # Tour Range mode: tour numbers rather than labels, since that's
@@ -213,7 +286,7 @@ class App(ctk.CTk):
 
         self.stop_btn = ctk.CTkButton(
             row2, text="Stop", command=self.on_stop_clicked, state="disabled",
-            fg_color=theme.ACCENT_RED, hover_color="#dc2626", height=36
+            fg_color=theme.ACCENT_RED, hover_color=theme.ACCENT_RED_HOVER, height=36
         )
         self.stop_btn.pack(side="left", padx=4)
 
@@ -237,7 +310,7 @@ class App(ctk.CTk):
 
         self.progress_detail_label = ctk.CTkLabel(
             progress_row, text="", font=ctk.CTkFont(size=11),
-            text_color="#8b93a1", anchor="w",
+            text_color=theme.TEXT_MUTED, anchor="w",
         )
         self.progress_detail_label.pack(fill="x")
 
@@ -315,7 +388,7 @@ class App(ctk.CTk):
         ids_box = ctk.CTkTextbox(form, width=400, height=140)
         ids_box.pack(fill="x", padx=4, pady=(0, 4))
 
-        count_label = ctk.CTkLabel(form, text="", font=ctk.CTkFont(size=11), text_color="#8b93a1")
+        count_label = ctk.CTkLabel(form, text="", font=ctk.CTkFont(size=11), text_color=theme.TEXT_MUTED)
         count_label.pack(anchor="w", padx=4, pady=(0, 8))
 
         def read_ids() -> list[str]:
@@ -384,11 +457,11 @@ class App(ctk.CTk):
         ctk.CTkButton(btns, text="Save", command=on_save).pack(side="left", padx=4)
         ctk.CTkButton(
             btns, text="Delete Selected", command=on_delete,
-            fg_color=theme.ACCENT_RED, hover_color="#dc2626",
+            fg_color=theme.ACCENT_RED, hover_color=theme.ACCENT_RED_HOVER,
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             btns, text="Close", command=dialog.destroy,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
 
         load_group_list()
@@ -422,7 +495,7 @@ class App(ctk.CTk):
             else:
                 self.status_label.configure(
                     text="Click 'Fetch Tours' to load the tour list, then pick one",
-                    text_color="#ff9900"
+                    text_color=theme.STATUS_WARNING
                 )
         elif mode == "Tour Range":
             self.sync_btn.configure(text="Sync Tour Range")
@@ -495,19 +568,23 @@ class App(ctk.CTk):
         btns.pack(fill="x", padx=10, pady=6)
         ctk.CTkButton(
             btns, text="Refresh from Cache", command=self.refresh_career,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             btns, text="Export Tours CSV", command=self.export_tours_csv,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             btns, text="Export Plane Kills CSV", command=self.export_planes_csv,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             btns, text="Export HTML Report", command=self.export_html,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
 
     def _build_tour_tab(self, frame):
@@ -522,7 +599,8 @@ class App(ctk.CTk):
         self.tour_dropdown.pack(side="left", padx=4)
         ctk.CTkButton(
             top, text="Refresh Tour List", command=self.refresh_tour_dropdown,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
         self.fetch_tour_btn = ctk.CTkButton(
             top, text="Fetch This Tour", command=self.on_fetch_single_tour,
@@ -531,7 +609,8 @@ class App(ctk.CTk):
         self.fetch_tour_btn.pack(side="left", padx=4)
         ctk.CTkButton(
             top, text="View Failed Tours", command=self.on_view_errors,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=4)
 
         self.tour_status_label = ctk.CTkLabel(
@@ -571,7 +650,8 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             top, text="Refresh from Cache", command=self.refresh_category,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=12)
 
         self.category_status_label = ctk.CTkLabel(
@@ -605,11 +685,11 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             bar, text="Clear Filters", command=clear, width=110,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=6)
         ctk.CTkLabel(
             bar, text="click a heading to sort  •  right-click to filter that column",
-            font=ctk.CTkFont(size=11), text_color="#8b93a1",
+            font=ctk.CTkFont(size=11), text_color=theme.TEXT_MUTED,
         ).pack(side="left", padx=10)
         return entry
 
@@ -739,11 +819,12 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             top, text="Refresh from Cache", command=self.refresh_planes,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=8)
         self.backfill_btn = ctk.CTkButton(
             top, text="Backfill Plane Data", command=self.on_backfill_planes,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, width=150,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY, width=150,
         )
         self.backfill_btn.pack(side="left", padx=4)
 
@@ -803,11 +884,11 @@ class App(ctk.CTk):
 
         ctk.CTkButton(
             top, text="Refresh from Cache", command=self.refresh_graph,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY,
         ).pack(side="left", padx=12)
 
         self.graph_status_label = ctk.CTkLabel(
-            frame, text="", font=ctk.CTkFont(size=11), text_color="#8b93a1"
+            frame, text="", font=ctk.CTkFont(size=11), text_color=theme.TEXT_MUTED
         )
         self.graph_status_label.pack(anchor="w", padx=10, pady=(6, 0))
 
@@ -897,7 +978,7 @@ class App(ctk.CTk):
         self.squad_player_entry.pack(side="left", padx=4)
         ctk.CTkButton(
             top, text="Use My ID", command=self.on_use_my_pilot_id,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY,
             width=80
         ).pack(side="left", padx=4)
         ctk.CTkLabel(top, text="Tour:").pack(side="left", padx=(12, 4))
@@ -938,7 +1019,7 @@ class App(ctk.CTk):
                   "squad pages, not from this app. Some tours have no squad record on their "
                   "end - the website shows the same thing. Nothing to report."),
             font=ctk.CTkFont(size=10),
-            text_color="#8b93a1",
+            text_color=theme.TEXT_MUTED,
             wraplength=900,
             justify="left",
         ).pack(anchor="w", padx=10, pady=(0, 8))
@@ -1306,7 +1387,7 @@ class App(ctk.CTk):
                     self.backfill_btn.configure(state="normal")
                     self.stop_btn.configure(state="disabled")
                     self._stop_progress()
-                    self.status_label.configure(text=f"Backfill error: {item[1]}", text_color="#ff0000")
+                    self.status_label.configure(text=f"Backfill error: {item[1]}", text_color=theme.STATUS_ERROR)
                 elif tag == "TOUR_FETCH_ERROR":
                     self.fetch_tour_btn.configure(state="normal")
                     self.tour_status_label.configure(text=f"Error: {item[1]}")
@@ -1320,10 +1401,10 @@ class App(ctk.CTk):
                             text_color=theme.ACCENT_OLIVE
                         )
                     else:
-                        self.status_label.configure(text="No tours found.", text_color="#ff9900")
+                        self.status_label.configure(text="No tours found.", text_color=theme.STATUS_WARNING)
                 elif tag == "TOURS_FETCH_ERROR":
                     self.fetch_tours_btn.configure(state="normal")
-                    self.status_label.configure(text=f"Error loading tours: {item[1]}", text_color="#ff0000")
+                    self.status_label.configure(text=f"Error loading tours: {item[1]}", text_color=theme.STATUS_ERROR)
         except queue.Empty:
             pass
         self._poll_after_id = self.after(150, self._poll_queue)
@@ -1407,7 +1488,7 @@ class App(ctk.CTk):
             self.squad_tour_var.set("")
             self.squad_status_label.configure(
                 text="⚠️ No tours available. Go to top of window → Enter Pilot ID → Click 'Sync Full History'",
-                text_color="#ff9900"
+                text_color=theme.STATUS_WARNING
             )
             # Show the workflow hint when no tours
             self.squad_hint_label.pack(anchor="w", padx=10, pady=(0, 10))
@@ -1426,7 +1507,7 @@ class App(ctk.CTk):
             self.arena_tour_var.set("")
             self.arena_status_label.configure(
                 text="⚠️ No tours available. Go to top of window → Enter Pilot ID → Click 'Sync Full History'",
-                text_color="#ff9900"
+                text_color=theme.STATUS_WARNING
             )
             # Show the workflow hint when no tours
             self.arena_hint_label.pack(anchor="w", padx=10, pady=(0, 10))

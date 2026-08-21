@@ -79,7 +79,7 @@ class SearchableSelect(ctk.CTkFrame):
         self.entry.pack(side="left", fill="x", expand=True)
         self.button = ctk.CTkButton(
             self, text="▼", width=28, command=self.toggle,
-            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY,
+            fg_color=theme.PANEL_BG_ALT, hover_color=theme.BORDER_GRAY, text_color=theme.TEXT_BODY,
         )
         self.button.pack(side="left", padx=(2, 0))
 
@@ -164,16 +164,16 @@ class SearchableSelect(ctk.CTkFrame):
         # the screen before jumping under the entry.
         self._popup.wm_withdraw()
         self._popup.wm_overrideredirect(True)  # no title bar - this is a dropdown, not a window
-        self._popup.configure(bg=theme.BORDER_GRAY)
+        self._popup.configure(bg=theme.color(theme.BORDER_GRAY))
         self._popup.transient(self.winfo_toplevel())
 
-        frame = tk.Frame(self._popup, bg=theme.BORDER_GRAY, bd=0)
+        frame = tk.Frame(self._popup, bg=theme.color(theme.BORDER_GRAY), bd=0)
         frame.pack(fill="both", expand=True, padx=1, pady=1)
 
         self._listbox = tk.Listbox(
             frame, activestyle="none", borderwidth=0, highlightthickness=0,
-            bg=theme.PANEL_BG, fg=theme.TEXT_BODY,
-            selectbackground=theme.ACCENT_GREEN, selectforeground=theme.BG_DARK,
+            bg=theme.color(theme.PANEL_BG), fg=theme.color(theme.TEXT_BODY),
+            selectbackground=theme.color(theme.ACCENT_GREEN), selectforeground=theme.color(theme.SELECT_FG),
             font=("Segoe UI", 10), exportselection=False,
         )
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self._listbox.yview)
