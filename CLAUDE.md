@@ -190,6 +190,20 @@ all. That is upstream, not a bug here.
 
 `tests/test_tours.py` covers all of this offline - keep it passing.
 
+### Renamed aircraft (same trap, different column)
+
+HTC has renamed a few planes over the years, and `plane` is stored as
+fetched, so one aeroplane can sit in the cache under two names and show as
+two rows with the career split between them. `db.PLANE_RENAMES` maps the
+superseded name onto the current one (`Ki-61` -> `Ki-61-I-Tei`, `P-40B` ->
+`P-40C`; both changed at the tour 92/93 split and never overlap).
+
+Two halves, both needed: the three `save_*` methods normalise on write via
+`canonical_plane()`, and `StatsDB.__init__` calls `canonicalize_planes()` on
+every open to fold rows older builds wrote - exactly the `reclassify_arenas()`
+contract. Adding a rename is one dict entry; keep both calls if you touch
+`__init__` or the savers. `tests/test_plane_renames.py` covers it.
+
 ### Parsing Strategy
 
 HiTech's HTML has:
@@ -221,13 +235,14 @@ Client enforces 3+ second delay between requests to avoid IP blocking:
 python -m pytest tests/ -q
 ```
 
-Baseline: 204 passed, 689 subtests passed, **0 skipped**.
+Baseline: 212 passed, 694 subtests passed, **0 skipped**.
 
 | File | Needs a window? | Needs cached data? | Covers |
 |---|---|---|---|
 | `test_parser.py` | no | no (fixtures) | the five HTML parsers |
 | `test_tours.py` | no | no | arena/era classification, `reclassify_arenas()`, tour-range narrowing |
 | `test_identity_groups.py` | no | no | `parse_identity_ids()`, group storage, multi-ID queries |
+| `test_plane_renames.py` | no | no | `PLANE_RENAMES`, normalising on write, `canonicalize_planes()` |
 | `test_version_check.py` | badge class only | no | version parsing/compare, the background check, the masthead badge |
 | `test_theme.py` | switch class only | no | the (light, dark) palette, the theme JSON, settings, live mode switching |
 | `test_widgets.py` | yes | no | `SearchableSelect` filtering, ranking, popup |

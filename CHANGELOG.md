@@ -4,6 +4,24 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.2.1 - The Ki-61 was showing up twice
+
+Thanks to **Shane** for spotting this one.
+
+If you flew in the old single Main Arena days, the Ki-61 was showing as
+two separate aeroplanes on Kills by Plane - your kills in it split
+between them, and two of it in the Model dropdown. It wasn't two
+aeroplanes. HTC used to call it the **Ki-61** and now calls it the
+**Ki-61-I-Tei**, and the app was filing your early tours under the old
+name and everything since under the new one.
+
+Same thing had happened to the **P-40B**, which HTC now calls the
+**P-40C**, so that's fixed too. Both now show as one aeroplane with your
+whole career in it.
+
+Nothing to re-sync and nothing to delete - the app repairs its own cache
+the first time you open this version.
+
 ## v1.2.0 - A light theme, and it tells you when there's an update
 
 Two things people asked for: the app now tells you when there is a newer

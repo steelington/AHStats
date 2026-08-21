@@ -234,6 +234,22 @@ def _arena_for_tourid(tourid: str) -> str:
     return "Unknown"
 
 
+# HTC has renamed a handful of aircraft since the early tours, so one
+# plane can sit in the cache under two names and show up as two rows with
+# stats split between them. Both of these changed at the tour 92/93 arena
+# split and never overlap: Ki-61 runs to tour 43 and Ki-61-I-Tei starts at
+# 95; P-40B runs to tour 34 and P-40C starts at 98.
+PLANE_RENAMES = {
+    "Ki-61": "Ki-61-I-Tei",
+    "P-40B": "P-40C",
+}
+
+
+def canonical_plane(name: str) -> str:
+    """The name HTC uses for this aircraft today."""
+    return PLANE_RENAMES.get(name, name)
+
+
 def parse_identity_ids(raw: str) -> list[str]:
     """Game IDs as typed into the identity-group editor.
 
@@ -362,6 +378,12 @@ class StatsDB:
         changed = self.reclassify_arenas()
         if changed:
             logger.info("Reclassified the arena of %d cached tour(s)", changed)
+        # Same reasoning as above: plane names are stored as fetched, so a
+        # DB written before a rename entered PLANE_RENAMES still holds the
+        # old one. Fold those rows onto the current name on open.
+        merged = self.canonicalize_planes()
+        if merged:
+            logger.info("Merged %d cached row(s) onto renamed aircraft", merged)
 
     def close(self):
         self._conn.close()
@@ -395,6 +417,82 @@ class StatsDB:
                 changed += 1
         self._conn.commit()
         return changed
+
+    def _merge_plane_rows(self, table: str, keys, sums, old: str, new: str):
+        """Fold every row for aircraft `old` into the row for `new` with
+        the same key columns, adding the numeric columns. Returns
+        (rows moved, list of key tuples that actually collided)."""
+        key_cols = ", ".join(keys)
+        rows = self._conn.execute(
+            f"SELECT {key_cols} FROM {table} WHERE plane=?", (old,)
+        ).fetchall()
+        where = " AND ".join(f"{k}=?" for k in keys)
+        collided = []
+        for row in rows:
+            keyvals = [row[k] for k in keys]
+            existing = self._conn.execute(
+                f"SELECT {', '.join(sums)} FROM {table} WHERE {where} AND plane=?",
+                (*keyvals, new),
+            ).fetchone()
+            if existing is None:
+                self._conn.execute(
+                    f"UPDATE {table} SET plane=? WHERE {where} AND plane=?",
+                    (new, *keyvals, old),
+                )
+                continue
+            # Both names in one tour shouldn't happen - the renames are
+            # clean cutovers - but sum rather than drop data if it does.
+            totals = [
+                (existing[c] or 0) + (self._conn.execute(
+                    f"SELECT {c} FROM {table} WHERE {where} AND plane=?", (*keyvals, old)
+                ).fetchone()[0] or 0)
+                for c in sums
+            ]
+            self._conn.execute(
+                f"UPDATE {table} SET {', '.join(f'{c}=?' for c in sums)} "
+                f"WHERE {where} AND plane=?",
+                (*totals, *keyvals, new),
+            )
+            self._conn.execute(
+                f"DELETE FROM {table} WHERE {where} AND plane=?", (*keyvals, old)
+            )
+            collided.append(keyvals)
+        return len(rows), collided
+
+    def canonicalize_planes(self) -> int:
+        """Rewrite cached rows that still carry a superseded aircraft
+        name (see PLANE_RENAMES) so a renamed plane shows as one row with
+        its whole career, not two half-filled ones. Plane names are
+        stored as fetched, so this repairs existing databases the same
+        way reclassify_arenas() does. Returns the number of rows moved."""
+        moved = 0
+        for old, new in PLANE_RENAMES.items():
+            count, _ = self._merge_plane_rows(
+                "pilot_plane_kills", ("gameid", "tourid"),
+                ("days_1_7", "days_8_14", "days_15_21", "days_22_28", "days_28_up", "total"),
+                old, new,
+            )
+            moved += count
+            count, _ = self._merge_plane_rows(
+                "pilot_plane_matrix", ("gameid", "tourid"),
+                ("kills_in", "kills_of", "killed_by", "died_in"), old, new,
+            )
+            moved += count
+            count, collided = self._merge_plane_rows(
+                "plane_leaderboard", ("tourid",), ("kills", "deaths"), old, new,
+            )
+            moved += count
+            for (tourid,) in collided:
+                # kills and deaths were summed, so the stored ratio is stale.
+                self._conn.execute(
+                    "UPDATE plane_leaderboard SET kd_ratio = "
+                    "CASE WHEN deaths > 0 THEN CAST(kills AS REAL) / deaths ELSE kills END "
+                    "WHERE tourid=? AND plane=?",
+                    (tourid, new),
+                )
+        if moved:
+            self._conn.commit()
+        return moved
 
     def get_tours(self, arena: str | None = None):
         if arena:
@@ -595,7 +693,7 @@ class StatsDB:
                 "INSERT INTO pilot_plane_kills (gameid, tourid, plane, days_1_7, days_8_14, days_15_21, "
                 "days_22_28, days_28_up, total, fetched_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
-                    gameid, tourid, entry.plane, entry.days_1_7, entry.days_8_14,
+                    gameid, tourid, canonical_plane(entry.plane), entry.days_1_7, entry.days_8_14,
                     entry.days_15_21, entry.days_22_28, entry.days_28_up, entry.total, now,
                 ),
             )
@@ -670,7 +768,7 @@ class StatsDB:
             self._conn.execute(
                 "INSERT INTO plane_leaderboard (tourid, plane, pindex, kills, deaths, kd_ratio, fetched_at) "
                 "VALUES (?,?,?,?,?,?,?)",
-                (tourid, p.plane, p.pindex, p.kills, p.deaths, p.kd_ratio, now),
+                (tourid, canonical_plane(p.plane), p.pindex, p.kills, p.deaths, p.kd_ratio, now),
             )
         self._conn.execute(
             "INSERT INTO plane_leaderboard_meta (tourid, total_kills, total_deaths, fetched_at) VALUES (?,?,?,?) "
@@ -700,7 +798,7 @@ class StatsDB:
             self._conn.execute(
                 "INSERT INTO pilot_plane_matrix (gameid, tourid, plane, kills_in, kills_of, killed_by, "
                 "died_in, fetched_at) VALUES (?,?,?,?,?,?,?,?)",
-                (gameid, tourid, entry.plane, entry.kills_in, entry.kills_of, entry.killed_by, entry.died_in, now),
+                (gameid, tourid, canonical_plane(entry.plane), entry.kills_in, entry.kills_of, entry.killed_by, entry.died_in, now),
             )
         gs = parsed.general_stats
         self._conn.execute(
