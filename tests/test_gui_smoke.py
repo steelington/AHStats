@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from ahstats import __version__, export, sync
@@ -732,6 +733,43 @@ class PilotSmokeTests:
             html = html_path.read_text(encoding="utf-8")
             self.assertIn("<html", html.lower())
             self.assertNotIn("http://", html.split("<body")[0], "report must be self-contained")
+
+    def test_export_buttons_follow_the_active_group(self):
+        """Forum report (v1.2.1): with a group picked under Career View the ID box is empty, and the export buttons
+        did nothing. They must export what the Career Summary shows - the group, in the selected arena."""
+        self.app.db.save_identity_group(self.TEST_GROUP, STYPE, [self.PILOT, "NoSuchPilotXYZ"])
+        self.addCleanup(self.app.db.delete_identity_group, self.TEST_GROUP, STYPE)
+        self.app.refresh_identity_view_dropdown()
+        self.app.identity_view_var.set(self.TEST_GROUP)
+        self.addCleanup(self.app.identity_view_var.set, "Single ID")
+        typed = self.app.gameid_entry.get()
+        self.app.gameid_entry.delete(0, "end")
+        self.addCleanup(self.app.gameid_entry.insert, 0, typed)
+        arena = self.app._selected_arena()
+        with tempfile.TemporaryDirectory() as tmp:
+            out = {"tours": Path(tmp) / "t.csv", "planes": Path(tmp) / "p.csv", "html": Path(tmp) / "r.html"}
+            for key, button in (("tours", self.app.export_tours_csv), ("planes", self.app.export_planes_csv),
+                                ("html", self.app.export_html)):
+                with mock.patch("ahstats.gui.filedialog.asksaveasfilename", return_value=str(out[key])) as ask, \
+                     mock.patch("ahstats.gui.messagebox.showwarning") as warn:
+                    button()
+                warn.assert_not_called()
+                self.assertTrue(ask.call_args.kwargs["initialfile"].startswith(self.TEST_GROUP))
+                self.assertTrue(out[key].exists(), f"{key}: nothing written")
+            rows = out["tours"].read_text(encoding="utf-8").splitlines()[1:]
+            career = self.app.db.get_career_totals([self.PILOT, "NoSuchPilotXYZ"], STYPE, arena=arena)
+            self.assertEqual(len(rows), career["tours"], "one row per tour the Career Summary counts")
+            self.assertIn(self.TEST_GROUP, out["html"].read_text(encoding="utf-8").split("</title>")[0])
+
+    def test_export_with_nothing_selected_says_why(self):
+        typed = self.app.gameid_entry.get()
+        self.app.gameid_entry.delete(0, "end")
+        self.addCleanup(self.app.gameid_entry.insert, 0, typed)
+        with mock.patch("ahstats.gui.filedialog.asksaveasfilename") as ask, \
+             mock.patch("ahstats.gui.messagebox.showwarning") as warn:
+            self.app.export_tours_csv()
+        ask.assert_not_called()
+        warn.assert_called_once()
 
 
 class SteelySmokeTest(PilotSmokeTests, unittest.TestCase):

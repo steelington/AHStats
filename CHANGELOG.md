@@ -4,6 +4,25 @@ Every released version, newest first. The same text goes on the
 [Releases](https://github.com/steelington/AHStats/releases) page, where the
 Windows exe for each version is attached.
 
+## v1.2.2 - The export buttons did nothing when a group was picked
+
+Thanks to the pilot on the forum who reported it, with a screenshot.
+
+If you picked a group under **Career View** (for example all the names
+you've flown under), the Career Summary showed the group, but **Export
+Tours CSV**, **Export Plane Kills CSV** and **Export HTML Report** did
+nothing at all when clicked. They only looked at the Pilot/Squad ID box,
+and with a group picked that box is empty.
+
+Now the exports save exactly what the Career Summary is showing: the
+group or the single pilot, and only the arena you've picked (before, they
+always took every arena, so the file didn't match the screen). A group's
+numbers are added up per tour, just like on screen. The file name says
+what's in it, for example `mains_MA_tours.csv`. And if there's nothing to
+export yet, a message now says why instead of nothing happening.
+
+Nothing to re-sync and nothing to delete.
+
 ## v1.2.1 - The Ki-61 was showing up twice
 
 Thanks to **Shane** for spotting this one.

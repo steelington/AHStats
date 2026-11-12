@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import queue
+import re
 import threading
 import time
 import webbrowser
@@ -1880,29 +1881,47 @@ class App(ctk.CTk):
 
     # ---------------- export ----------------
 
-    def export_tours_csv(self):
-        gameid = self.gameid_entry.get().strip()
+    def _export_target(self, kind: str):
+        """What the Career Summary is showing - the typed id, or the active identity group's ids - plus the arena
+        and a name for the file. Says why when there's nothing to export, rather than doing nothing."""
+        gameid = self._effective_gameid()
         if not gameid:
-            return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=f"{gameid}_tours.csv")
+            messagebox.showwarning(f"Export {kind}", "Enter a pilot or squad game ID (or pick a group under Career View) first.")
+            return None
+        name = gameid if isinstance(gameid, str) else self.identity_view_var.get()
+        arena = self._selected_arena()
+        if not self.db.get_pilot_tourids(gameid, self.stype_var.get(), arena):
+            messagebox.showwarning(f"Export {kind}", f"No cached tours for {name} in {arena or 'any arena'} yet. Sync first.")
+            return None
+        safe = re.sub(r'[\\/:*?"<>|]+', "_", name).strip() or "export"
+        if arena:   # "Melee (MA)" -> "_MA"
+            safe += "_" + re.sub(r"[^A-Za-z0-9]+", "", arena.split("(")[-1] if "(" in arena else arena)
+        return gameid, name, arena, safe
+
+    def export_tours_csv(self):
+        t = self._export_target("Tours CSV")
+        if not t: return
+        gameid, _name, arena, safe = t
+        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=f"{safe}_tours.csv")
         if path:
-            export.export_pilot_tours_csv(self.db, gameid, self.stype_var.get(), path)
+            export.export_pilot_tours_csv(self.db, gameid, self.stype_var.get(), path, arena=arena)
 
     def export_planes_csv(self):
-        gameid = self.gameid_entry.get().strip()
-        if not gameid:
-            return
-        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=f"{gameid}_kills_by_plane.csv")
+        t = self._export_target("Plane Kills CSV")
+        if not t: return
+        gameid, _name, arena, safe = t
+        path = filedialog.asksaveasfilename(defaultextension=".csv", initialfile=f"{safe}_kills_by_plane.csv")
         if path:
-            export.export_pilot_plane_kills_csv(self.db, gameid, path)
+            export.export_pilot_plane_kills_csv(self.db, gameid, path, arena=arena)
 
     def export_html(self):
-        gameid = self.gameid_entry.get().strip()
-        if not gameid:
-            return
-        path = filedialog.asksaveasfilename(defaultextension=".html", initialfile=f"{gameid}_report.html")
+        t = self._export_target("HTML Report")
+        if not t: return
+        gameid, name, arena, safe = t
+        path = filedialog.asksaveasfilename(defaultextension=".html", initialfile=f"{safe}_report.html")
         if path:
-            export.export_html_report(self.db, gameid, self.stype_var.get(), path)
+            title = name + (f" - {arena}" if arena else "")
+            export.export_html_report(self.db, gameid, self.stype_var.get(), path, arena=arena, title=title)
 
     # ---------------- lifecycle ----------------
 

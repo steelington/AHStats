@@ -20,8 +20,24 @@ def _seconds_to_hms(total: int | None) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
-def export_pilot_tours_csv(db: StatsDB, gameid: str, stype: str, path: str | Path) -> None:
-    """One row per cached tour, 'total' category numbers."""
+_SUMMED = ("kills", "assists", "sorties", "landed", "bailed", "ditched", "captured", "deaths", "discos", "time_seconds")
+
+
+def _summed_totals(rows) -> dict:
+    """{category: numbers} for one tour. An identity group gives one row per member id per category: add them up
+    (rank isn't additive, so it's kept only when a single id gave it)."""
+    out: dict = {}
+    for r in rows:
+        r = dict(r); c = out.get(r["category"])
+        if c is None: out[r["category"]] = r; continue
+        for k in _SUMMED: c[k] = (c.get(k) or 0) + (r.get(k) or 0)
+        c["rank"] = None
+    return out
+
+
+def export_pilot_tours_csv(db: StatsDB, gameid, stype: str, path: str | Path, arena: str | None = None) -> None:
+    """One row per cached tour, 'total' category numbers. gameid may be one id or an identity group's list
+    (summed per tour, as the Career Summary does); arena limits it to one arena type, None = all."""
     tours = {t["tourid"]: t for t in db.get_tours()}
     fieldnames = [
         "tour", "start_date", "end_date", "arena", "kills", "assists", "sorties",
@@ -30,9 +46,9 @@ def export_pilot_tours_csv(db: StatsDB, gameid: str, stype: str, path: str | Pat
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        for tourid in db.get_pilot_tourids(gameid, stype):
-            rows = {r["category"]: r for r in db.get_pilot_totals(gameid, stype, tourid)}
-            total = rows.get("total")
+        for tourid in sorted(db.get_pilot_tourids(gameid, stype, arena),
+                             key=lambda tid: tours[tid]["start_date"] or "" if tid in tours else ""):
+            total = _summed_totals(db.get_pilot_totals(gameid, stype, tourid)).get("total")
             if not total:
                 continue
             tour = tours.get(tourid)
@@ -48,12 +64,12 @@ def export_pilot_tours_csv(db: StatsDB, gameid: str, stype: str, path: str | Pat
             })
 
 
-def export_pilot_plane_kills_csv(db: StatsDB, gameid: str, path: str | Path) -> None:
-    """Career kills-by-plane-type, summed across every cached tour."""
+def export_pilot_plane_kills_csv(db: StatsDB, gameid, path: str | Path, arena: str | None = None) -> None:
+    """Career kills-by-plane-type, summed across every cached tour (of one arena type if arena is given)."""
     with open(path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["plane", "career_kills"])
-        for row in db.get_career_kills_by_plane(gameid):
+        for row in db.get_career_kills_by_plane(gameid, arena):
             writer.writerow([row["plane"], row["kills"]])
 
 
@@ -97,20 +113,22 @@ def _prepare_chart_data(tours: dict, per_tour: dict, career: dict) -> dict:
     }
 
 
-def export_html_report(db: StatsDB, gameid: str, stype: str, path: str | Path) -> None:
+def export_html_report(db: StatsDB, gameid, stype: str, path: str | Path, arena: str | None = None,
+                       title: str | None = None) -> None:
     """Self-contained HTML report: career summary + kills-by-plane, and a
     tour picker that switches between cached tours client-side (no
-    network calls, no external assets - everything is embedded)."""
+    network calls, no external assets - everything is embedded). gameid may be an identity group's list;
+    title names the report (default: the id); arena limits it to one arena type, None = all."""
     tours = {t["tourid"]: dict(t) for t in db.get_tours()}
     tourids = sorted(
-        db.get_pilot_tourids(gameid, stype),
+        db.get_pilot_tourids(gameid, stype, arena),
         key=lambda tid: (tours[tid]["start_date"] if tid in tours else ""),
         reverse=True,
     )
 
     per_tour = {}
     for tourid in tourids:
-        rows = {r["category"]: dict(r) for r in db.get_pilot_totals(gameid, stype, tourid)}
+        rows = _summed_totals(db.get_pilot_totals(gameid, stype, tourid))
         tour = tours.get(tourid)
         per_tour[tourid] = {
             "label": tour["label"] if tour else tourid,
@@ -118,8 +136,8 @@ def export_html_report(db: StatsDB, gameid: str, stype: str, path: str | Path) -
             "categories": rows,
         }
 
-    career = dict(db.get_career_totals(gameid, stype))
-    kills_by_plane = [dict(r) for r in db.get_career_kills_by_plane(gameid)]
+    career = dict(db.get_career_totals(gameid, stype, arena=arena))
+    kills_by_plane = [dict(r) for r in db.get_career_kills_by_plane(gameid, arena)]
 
     # Prepare chart datasets
     chart_data = _prepare_chart_data(tours, per_tour, career)
@@ -130,7 +148,7 @@ def export_html_report(db: StatsDB, gameid: str, stype: str, path: str | Path) -
         "kills_by_plane": kills_by_plane,
         "charts": chart_data,
     })
-    safe_gameid = html.escape(gameid)
+    safe_gameid = html.escape(title or (gameid if isinstance(gameid, str) else ", ".join(gameid)))
 
     page = """<!DOCTYPE html>
 <html lang="en">
